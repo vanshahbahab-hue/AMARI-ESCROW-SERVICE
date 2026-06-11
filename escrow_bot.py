@@ -30,7 +30,8 @@ ADMIN_IDS = [OWNER_ID]
 
 DEALS_FILE = "deals.json"
 USERS_FILE = "users.json"
-PENDING_FILE = "pending.json"
+PENDING_TX_FILE = "pending_tx.json"
+VERIFIED_TX_FILE = "verified_tx.json"
 
 # ============ FANCY TEXT FUNCTION ============
 def to_fancy(text):
@@ -38,9 +39,6 @@ def to_fancy(text):
         'A': '𝐀', 'B': '𝐁', 'C': '𝐂', 'D': '𝐃', 'E': '𝐄', 'F': '𝐅', 'G': '𝐆', 'H': '𝐇', 'I': '𝐈',
         'J': '𝐉', 'K': '𝐊', 'L': '𝐋', 'M': '𝐌', 'N': '𝐍', 'O': '𝐎', 'P': '𝐏', 'Q': '𝐐', 'R': '𝐑',
         'S': '𝐒', 'T': '𝐓', 'U': '𝐔', 'V': '𝐕', 'W': '𝐖', 'X': '𝐗', 'Y': '𝐘', 'Z': '𝐙',
-        'a': '𝐚', 'b': '𝐛', 'c': '𝐜', 'd': '𝐝', 'e': '𝐞', 'f': '𝐟', 'g': '𝐠', 'h': '𝐡', 'i': '𝐢',
-        'j': '𝐣', 'k': '𝐤', 'l': '𝐥', 'm': '𝐦', 'n': '𝐧', 'o': '𝐨', 'p': '𝐩', 'q': '𝐪', 'r': '𝐫',
-        's': '𝐬', 't': '𝐭', 'u': '𝐮', 'v': '𝐯', 'w': '𝐰', 'x': '𝐱', 'y': '𝐲', 'z': '𝐳',
         '0': '𝟎', '1': '𝟏', '2': '𝟐', '3': '𝟑', '4': '𝟒', '5': '𝟓', '6': '𝟔', '7': '𝟕', '8': '𝟖', '9': '𝟗'
     }
     return ''.join(fancy_map.get(c, c) for c in text)
@@ -66,19 +64,30 @@ def save_users(data):
     with open(USERS_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
-def load_pending():
-    if os.path.exists(PENDING_FILE):
-        with open(PENDING_FILE, 'r') as f:
+def load_pending_tx():
+    if os.path.exists(PENDING_TX_FILE):
+        with open(PENDING_TX_FILE, 'r') as f:
             return json.load(f)
     return {}
 
-def save_pending(data):
-    with open(PENDING_FILE, 'w') as f:
+def save_pending_tx(data):
+    with open(PENDING_TX_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
+
+def load_verified_tx():
+    if os.path.exists(VERIFIED_TX_FILE):
+        with open(VERIFIED_TX_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+def save_verified_tx(data):
+    with open(VERIFIED_TX_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
 deals = load_deals()
 users = load_users()
-pending_tx = load_pending()
+pending_tx = load_pending_tx()
+verified_tx = load_verified_tx()
 
 # ============ HELPERS ============
 def generate_deal_id():
@@ -117,6 +126,14 @@ def extract_amount_from_sms(text):
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             return float(match.group(1))
+    return None
+
+def extract_tx_id_from_sms(text):
+    patterns = [r'Txn ID[:\s]*(\d+)', r'Transaction ID[:\s]*(\d+)', r'TX[:\s]*(\d+)', r'ID[:\s]*(\d+)', r'(\d{10,15})']
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return match.group(1)
     return None
 
 def find_deal_by_qr_amount(qr_amount):
@@ -162,11 +179,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_new and user_id != OWNER_ID:
         await context.bot.send_message(
             chat_id=OWNER_ID,
-            text=f"🆕 𝐍𝐄𝐖 𝐔𝐒𝐄𝐑 𝐉𝐎𝐈𝐍𝐄𝐃!\n\n👤 𝐍𝐚𝐦𝐞: {user.first_name}\n🆔 𝐈𝐃: {user_id}\n📛 𝐔𝐬𝐞𝐫𝐧𝐚𝐦𝐞: @{user.username or 'NoUsername'}\n🕐 𝐓𝐢𝐦𝐞: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            text=f"🆕 𝐍𝐄𝐖 𝐔𝐒𝐄𝐑 𝐉𝐎𝐈𝐍𝐄𝐃!\n\n👤 {user.first_name}\n🆔 {user_id}\n📛 @{user.username or 'NoUsername'}"
         )
     
     if is_banned(user_id):
-        await update.message.reply_text("❌ 𝐘𝐨𝐮 𝐚𝐫𝐞 𝐛𝐚𝐧𝐧𝐞𝐝 𝐟𝐫𝐨𝐦 𝐮𝐬𝐢𝐧𝐠 𝐭𝐡𝐢𝐬 𝐛𝐨𝐭.")
+        await update.message.reply_text("❌ 𝐘𝐨𝐮 𝐚𝐫𝐞 𝐛𝐚𝐧𝐧𝐞𝐝.")
         return
     
     # ============ ESCROW FORM DETECTION ============
@@ -197,58 +214,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         deal_id = generate_deal_id()
         
         deals[deal_id] = {
-            "deal_id": deal_id,
-            "amount": amount,
-            "fee": fee,
-            "total_with_fee": total_with_fee,
-            "qr_amount": qr_amount,
-            "buyer": buyer,
-            "seller": seller,
-            "deal_detail": deal_detail,
-            "upi_id": upi_id,
-            "buyer_agreed": False,
-            "seller_agreed": False,
-            "status": "𝐏𝐄𝐍𝐃𝐈𝐍𝐆",
-            "chat_id": chat_id,
-            "created_at": str(datetime.now()),
-            "buyer_id": None,
-            "seller_id": None,
-            "payment_received": False,
-            "payment_txid": None,
-            "payment_amount": None,
-            "seller_upi": None,
-            "release_requested": False
+            "deal_id": deal_id, "amount": amount, "fee": fee,
+            "total_with_fee": total_with_fee, "qr_amount": qr_amount,
+            "buyer": buyer, "seller": seller, "deal_detail": deal_detail,
+            "upi_id": upi_id, "buyer_agreed": False, "seller_agreed": False,
+            "status": "𝐏𝐄𝐍𝐃𝐈𝐍𝐆", "chat_id": chat_id,
+            "created_at": str(datetime.now()), "buyer_id": None, "seller_id": None,
+            "payment_received": False, "payment_txid": None, "payment_amount": None,
+            "seller_upi": None, "release_requested": False
         }
         save_deals(deals)
-        
-        fancy_amount = to_fancy(str(amount))
-        fancy_fee = to_fancy(str(fee))
-        fancy_total = to_fancy(str(total_with_fee))
         
         await update.message.reply_text(f"""
 🔷 𝐄𝐒𝐂𝐑𝐎𝐖 𝐃𝐄𝐀𝐋 𝐂𝐑𝐄𝐀𝐓𝐄𝐃 🔷
 
 📋 𝐃𝐄𝐀𝐋 𝐈𝐃: `{deal_id}`
-💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}
-📊 𝐅𝐞𝐞: ₹{fancy_fee}
-💵 𝐓𝐨𝐭𝐚𝐥 𝐭𝐨 𝐏𝐚𝐲: ₹{fancy_total}
+💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{amount}
+📊 𝐅𝐞𝐞: ₹{fee}
+💵 𝐓𝐨𝐭𝐚𝐥: ₹{total_with_fee}
 
 👤 𝐁𝐮𝐲𝐞𝐫: @{buyer}
 👥 𝐒𝐞𝐥𝐥𝐞𝐫: @{seller}
 📝 𝐃𝐞𝐭𝐚𝐢𝐥𝐬: {deal_detail}
 💳 𝐔𝐏𝐈: {upi_id}
 
-━━━━━━━━━━━━━━━━━━
-⚠️ 𝐄𝐒𝐂𝐑𝐎𝐖 𝐅𝐄𝐄𝐒 𝐈𝐒 𝐍𝐎𝐍-𝐑𝐄𝐅𝐔𝐍𝐃𝐀𝐁𝐋𝐄
-━━━━━━━━━━━━━━━━━━
+⚠️ 𝐅𝐄𝐄𝐒 𝐍𝐎𝐍-𝐑𝐄𝐅𝐔𝐍𝐃𝐀𝐁𝐋𝐄
 
-✅ @{buyer} - 𝐓𝐲𝐩𝐞 `𝐀𝐆𝐑𝐄𝐄` 𝐭𝐨 𝐜𝐨𝐧𝐟𝐢𝐫𝐦
-✅ @{seller} - 𝐓𝐲𝐩𝐞 `𝐀𝐆𝐑𝐄𝐄` 𝐭𝐨 𝐜𝐨𝐧𝐟𝐢𝐫𝐦
+✅ @{buyer} - 𝐓𝐲𝐩𝐞 `𝐀𝐆𝐑𝐄𝐄`
+✅ @{seller} - 𝐓𝐲𝐩𝐞 `𝐀𝐆𝐑𝐄𝐄`
 
-🕐 𝐁𝐨𝐭𝐡 𝐦𝐮𝐬𝐭 𝐚𝐠𝐫𝐞𝐞 𝐰𝐢𝐭𝐡𝐢𝐧 𝟏𝟎 𝐦𝐢𝐧𝐮𝐭𝐞𝐬!
+🕐 𝟏𝟎 𝐦𝐢𝐧𝐮𝐭𝐞𝐬 𝐭𝐢𝐦𝐞𝐥𝐢𝐦𝐢𝐭!
 """, parse_mode="Markdown")
         
-        await context.bot.send_message(chat_id=OWNER_ID, text=f"🆕 𝐍𝐄𝐖 𝐃𝐄𝐀𝐋!\n📋 𝐈𝐃: {deal_id}\n💰 ₹{amount}\n@{buyer} → @{seller}")
+        await context.bot.send_message(chat_id=OWNER_ID, text=f"🆕 𝐍𝐄𝐖 𝐃𝐄𝐀𝐋!\n📋 {deal_id}\n💰 ₹{amount}\n@{buyer} → @{seller}")
         return
     
     # ============ AGREE DETECTION ============
@@ -264,8 +262,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 deal["buyer_agreed"] = True
                 deal["buyer_id"] = user.id
                 save_deals(deals)
-                await update.message.reply_text(f"✅ @{user.username}, 𝐲𝐨𝐮 𝐚𝐠𝐫𝐞𝐞𝐝 𝐚𝐬 𝐁𝐔𝐘𝐄𝐑 𝐟𝐨𝐫 𝐝𝐞𝐚𝐥 `{deal_id}`!")
-                
+                await update.message.reply_text(f"✅ @{user.username}, 𝐚𝐠𝐫𝐞𝐞𝐝 𝐚𝐬 𝐁𝐔𝐘𝐄𝐑 𝐟𝐨𝐫 `{deal_id}`!")
                 if deal["seller_agreed"]:
                     await process_both_agreed(context, deal_id, deal)
                 return
@@ -274,13 +271,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 deal["seller_agreed"] = True
                 deal["seller_id"] = user.id
                 save_deals(deals)
-                await update.message.reply_text(f"✅ @{user.username}, 𝐲𝐨𝐮 𝐚𝐠𝐫𝐞𝐞𝐝 𝐚𝐬 𝐒𝐄𝐋𝐋𝐄𝐑 𝐟𝐨𝐫 𝐝𝐞𝐚𝐥 `{deal_id}`!")
-                
+                await update.message.reply_text(f"✅ @{user.username}, 𝐚𝐠𝐫𝐞𝐞𝐝 𝐚𝐬 𝐒𝐄𝐋𝐋𝐄𝐑 𝐟𝐨𝐫 `{deal_id}`!")
                 if deal["buyer_agreed"]:
                     await process_both_agreed(context, deal_id, deal)
                 return
         
-        await update.message.reply_text("❌ 𝐘𝐨𝐮 𝐝𝐨𝐧'𝐭 𝐡𝐚𝐯𝐞 𝐚𝐧𝐲 𝐩𝐞𝐧𝐝𝐢𝐧𝐠 𝐝𝐞𝐚𝐥.")
+        await update.message.reply_text("❌ 𝐍𝐨 𝐩𝐞𝐧𝐝𝐢𝐧𝐠 𝐝𝐞𝐚𝐥.")
         return
 
 async def process_both_agreed(context, deal_id, deal):
@@ -291,85 +287,37 @@ async def process_both_agreed(context, deal_id, deal):
     img_bytes = generate_qr(deal["upi_id"], qr_amount, deal_id)
     photo = InputFile(img_bytes, filename="qr.png")
     
-    fancy_amount = to_fancy(str(deal['amount']))
-    fancy_fee = to_fancy(str(deal['fee']))
-    fancy_qr = to_fancy(str(qr_amount))
-    
     if deal.get("buyer_id"):
         await context.bot.send_photo(
             chat_id=deal["buyer_id"],
             photo=photo,
-            caption=f"🔷 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐐𝐑 𝐂𝐎𝐃𝐄 🔷\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐎𝐫𝐢𝐠𝐢𝐧𝐚𝐥: ₹{fancy_amount}\n📊 𝐅𝐞𝐞: ₹{fancy_fee}\n\n💵 𝐏𝐚𝐲 𝐭𝐡𝐢𝐬 𝐞𝐱𝐚𝐜𝐭 𝐚𝐦𝐨𝐮𝐧𝐭: ₹{fancy_qr}\n\n✅ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐰𝐢𝐥𝐥 𝐛𝐞 𝐀𝐔𝐓𝐎-𝐕𝐄𝐑𝐈𝐅𝐈𝐄𝐃 𝐰𝐡𝐞𝐧 𝐒𝐌𝐒 𝐢𝐬 𝐫𝐞𝐜𝐞𝐢𝐯𝐞𝐝\n\n❌ 𝐃𝐎𝐍'𝐓 𝐏𝐀𝐘 𝐈𝐍 𝐃𝐌𝐒",
+            caption=f"🔷 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐐𝐑 𝐂𝐎𝐃𝐄 🔷\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐎𝐫𝐢𝐠𝐢𝐧𝐚𝐥: ₹{deal['amount']}\n📊 𝐅𝐞𝐞: ₹{deal['fee']}\n\n💵 𝐏𝐚𝐲 𝐄𝐗𝐀𝐂𝐓𝐋𝐘: ₹{qr_amount}\n\n✅ 𝐀𝐟𝐭𝐞𝐫 𝐩𝐚𝐲𝐦𝐞𝐧𝐭, 𝐟𝐨𝐫𝐰𝐚𝐫𝐝 𝐒𝐌𝐒 𝐭𝐨 𝐛𝐨𝐭\n📝 𝐎𝐫 𝐭𝐲𝐩𝐞: `/txn {deal_id} 𝐘𝐎𝐔𝐑_𝐓𝐗𝐍_𝐈𝐃`\n\n❌ 𝐃𝐎𝐍'𝐓 𝐏𝐀𝐘 𝐈𝐍 𝐃𝐌𝐒",
             parse_mode="Markdown"
         )
     
     await context.bot.send_message(
         chat_id=deal["chat_id"],
-        text=f"✅ 𝐁𝐎𝐓𝐇 𝐀𝐆𝐑𝐄𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n\n👤 𝐁𝐮𝐲𝐞𝐫 @{deal['buyer']} 𝐡𝐚𝐬 𝐫𝐞𝐜𝐞𝐢𝐯𝐞𝐝 𝐐𝐑 𝐜𝐨𝐝𝐞.\n⚠️ 𝐏𝐚𝐲 𝐄𝐗𝐀𝐂𝐓 ₹{fancy_qr} 𝐟𝐨𝐫 𝐚𝐮𝐭𝐨-𝐯𝐞𝐫𝐢𝐟𝐢𝐜𝐚𝐭𝐢𝐨𝐧!",
+        text=f"✅ 𝐁𝐎𝐓𝐇 𝐀𝐆𝐑𝐄𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 ₹{deal['amount']}\n\n👤 𝐁𝐮𝐲𝐞𝐫 𝐡𝐚𝐬 𝐫𝐞𝐜𝐞𝐢𝐯𝐞𝐝 𝐐𝐑 𝐜𝐨𝐝𝐞.\n⚠️ 𝐏𝐚𝐲 ₹{qr_amount} 𝐟𝐨𝐫 𝐚𝐮𝐭𝐨-𝐯𝐞𝐫𝐢𝐟𝐢𝐜𝐚𝐭𝐢𝐨𝐧!",
         parse_mode="Markdown"
     )
-    
-    await context.bot.send_message(chat_id=OWNER_ID, text=f"✅ 𝐁𝐎𝐓𝐇 𝐀𝐆𝐑𝐄𝐄𝐃!\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: {deal_id}\n@{deal['buyer']} 𝐚𝐧𝐝 @{deal['seller']}")
 
-# ============ AUTO VERIFICATION FROM SMS ============
-async def sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
-        return
-    
-    text = update.message.text
-    sms_amount = extract_amount_from_sms(text)
-    
-    if not sms_amount:
-        await update.message.reply_text("❌ 𝐂𝐨𝐮𝐥𝐝 𝐧𝐨𝐭 𝐞𝐱𝐭𝐫𝐚𝐜𝐭 𝐚𝐦𝐨𝐮𝐧𝐭 𝐟𝐫𝐨𝐦 𝐒𝐌𝐒.")
-        return
-    
-    deal_id, deal = find_deal_by_qr_amount(sms_amount)
-    
-    if deal_id and deal:
-        deal["payment_received"] = True
-        deal["payment_amount"] = sms_amount
-        deal["status"] = "𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃"
-        save_deals(deals)
-        
-        fancy_amount = to_fancy(str(deal['amount']))
-        
-        await update.message.reply_text(f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐀𝐔𝐓𝐎-𝐕𝐄𝐑𝐈𝐅𝐈𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}", parse_mode="Markdown")
-        
-        # Send to GROUP
-        await context.bot.send_message(
-            chat_id=deal["chat_id"],
-            text=f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐀𝐔𝐓𝐎-𝐕𝐄𝐑𝐈𝐅𝐈𝐄𝐃! ✅\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n\n𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐡𝐚𝐬 𝐛𝐞𝐞𝐧 𝐯𝐞𝐫𝐢𝐟𝐢𝐞𝐝.\n👥 𝐒𝐞𝐥𝐥𝐞𝐫 𝐜𝐚𝐧 𝐧𝐨𝐰 𝐝𝐞𝐥𝐢𝐯𝐞𝐫 𝐭𝐡𝐞 𝐩𝐫𝐨𝐝𝐮𝐜𝐭.\n👤 𝐁𝐮𝐲𝐞𝐫 𝐰𝐢𝐥𝐥 𝐫𝐞𝐥𝐞𝐚𝐬𝐞 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 𝐚𝐟𝐭𝐞𝐫 𝐫𝐞𝐜𝐞𝐢𝐯𝐢𝐧𝐠 𝐩𝐫𝐨𝐝𝐮𝐜𝐭.",
-            parse_mode="Markdown"
-        )
-        
-        # Send to buyer
-        if deal.get("buyer_id"):
-            await context.bot.send_message(
-                chat_id=deal["buyer_id"],
-                text=f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n\n📦 𝐀𝐟𝐭𝐞𝐫 𝐫𝐞𝐜𝐞𝐢𝐯𝐢𝐧𝐠 𝐩𝐫𝐨𝐝𝐮𝐜𝐭, 𝐭𝐲𝐩𝐞: `/release {deal_id}`",
-                parse_mode="Markdown"
-            )
-        
-        # Send to seller
-        if deal.get("seller_id"):
-            await context.bot.send_message(
-                chat_id=deal["seller_id"],
-                text=f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n\n🎁 𝐏𝐥𝐞𝐚𝐬𝐞 𝐝𝐞𝐥𝐢𝐯𝐞𝐫 𝐭𝐡𝐞 𝐩𝐫𝐨𝐝𝐮𝐜𝐭 𝐭𝐨 𝐛𝐮𝐲𝐞𝐫.",
-                parse_mode="Markdown"
-            )
-    else:
-        await update.message.reply_text(f"⚠️ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐝𝐞𝐭𝐞𝐜𝐭𝐞𝐝!\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{sms_amount}\n❌ 𝐍𝐨 𝐦𝐚𝐭𝐜𝐡𝐢𝐧𝐠 𝐝𝐞𝐚𝐥 𝐟𝐨𝐮𝐧𝐝!")
-
-# ============ BUYER VERIFY COMMAND (ONLY AFTER REAL PAYMENT) ============
-async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Buyer can verify ONLY after payment is actually made"""
+# ============ TRANSACTION ID VERIFICATION (Buyer uses this) ============
+async def txn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Buyer: /txn DEAL_ID TRANSACTION_ID"""
     user_id = update.effective_user.id
     
-    if len(context.args) < 1:
-        await update.message.reply_text("📝 𝐔𝐬𝐚𝐠𝐞: `/verify 𝐃𝐄𝐀𝐋_𝐈𝐃`\n\n𝐄𝐱𝐚𝐦𝐩𝐥𝐞: `/verify K2P9EJY0`", parse_mode="Markdown")
+    if len(context.args) < 2:
+        await update.message.reply_text(
+            "📝 𝐔𝐬𝐚𝐠𝐞: `/txn 𝐃𝐄𝐀𝐋_𝐈𝐃 𝐓𝐑𝐀𝐍𝐒𝐀𝐂𝐓𝐈𝐎𝐍_𝐈𝐃`\n\n"
+            "𝐄𝐱𝐚𝐦𝐩𝐥𝐞: `/txn K2P9EJY0 652832203385`\n\n"
+            "𝐘𝐨𝐮 𝐜𝐚𝐧 𝐚𝐥𝐬𝐨 𝐬𝐢𝐦𝐩𝐥𝐲 𝐟𝐨𝐫𝐰𝐚𝐫𝐝 𝐭𝐡𝐞 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 𝐒𝐌𝐒 𝐭𝐨 𝐦𝐞!",
+            parse_mode="Markdown"
+        )
         return
     
     deal_id = context.args[0].upper()
+    tx_id = context.args[1]
+    
     deal = deals.get(deal_id)
     
     if not deal:
@@ -377,106 +325,167 @@ async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if user_id != deal.get("buyer_id"):
-        await update.message.reply_text("❌ 𝐎𝐧𝐥𝐲 𝐛𝐮𝐲𝐞𝐫 𝐜𝐚𝐧 𝐯𝐞𝐫𝐢𝐟𝐲 𝐭𝐡𝐞 𝐩𝐚𝐲𝐦𝐞𝐧𝐭!")
+        await update.message.reply_text("❌ 𝐎𝐧𝐥𝐲 𝐛𝐮𝐲𝐞𝐫 𝐜𝐚𝐧 𝐯𝐞𝐫𝐢𝐟𝐲!")
         return
     
     if deal["status"] != "𝐀𝐖𝐀𝐈𝐓𝐈𝐍𝐆 𝐏𝐀𝐘𝐌𝐄𝐍𝐓":
-        await update.message.reply_text(f"❌ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐢𝐬 𝐧𝐨𝐭 𝐚𝐰𝐚𝐢𝐭𝐢𝐧𝐠 𝐩𝐚𝐲𝐦𝐞𝐧𝐭!\n𝐂𝐮𝐫𝐫𝐞𝐧𝐭 𝐬𝐭𝐚𝐭𝐮𝐬: {deal['status']}", parse_mode="Markdown")
+        await update.message.reply_text(f"❌ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐧𝐨𝐭 𝐚𝐰𝐚𝐢𝐭𝐢𝐧𝐠 𝐩𝐚𝐲𝐦𝐞𝐧𝐭!", parse_mode="Markdown")
         return
     
-    # ============ CRITICAL FIX: Check if payment actually happened ============
-    # Bot will NOT confirm payment unless SMS has been received
-    # Payment can only be confirmed by:
-    # 1. SMS auto-verification (owner forwards SMS)
-    # 2. Admin manually confirms (/confirmpayment DEAL_ID)
+    if deal.get("payment_received"):
+        await update.message.reply_text(f"✅ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐚𝐥𝐫𝐞𝐚𝐝𝐲 𝐯𝐞𝐫𝐢𝐟𝐢𝐞𝐝 𝐟𝐨𝐫 `{deal_id}`!", parse_mode="Markdown")
+        return
     
-    # If payment is not received yet, buyer CANNOT fake verify
-    if not deal.get("payment_received"):
+    # Check if this TXN ID exists in pending (from SMS)
+    if tx_id in pending_tx:
+        txn_data = pending_tx[tx_id]
+        amount = txn_data.get('amount')
+        
+        # Verify that amount matches the QR amount
+        if amount and abs(amount - deal['qr_amount']) < 0.01:
+            deal["payment_received"] = True
+            deal["payment_txid"] = tx_id
+            deal["payment_amount"] = amount
+            deal["status"] = "𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃"
+            save_deals(deals)
+            
+            # Move to verified
+            verified_tx[tx_id] = txn_data
+            save_verified_tx(verified_tx)
+            del pending_tx[tx_id]
+            save_pending_tx(pending_tx)
+            
+            fancy_amount = to_fancy(str(deal['amount']))
+            
+            await update.message.reply_text(
+                f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐕𝐄𝐑𝐈𝐅𝐈𝐄𝐃! ✅\n\n"
+                f"📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n"
+                f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n"
+                f"🔖 𝐓𝐗𝐍 𝐈𝐃: `{tx_id}`\n\n"
+                f"🎉 𝐂𝐎𝐍𝐓𝐈𝐍𝐔𝐄 𝐘𝐎𝐔𝐑 𝐃𝐄𝐀𝐋 🎉",
+                parse_mode="Markdown"
+            )
+            
+            # Notify group
+            await context.bot.send_message(
+                chat_id=deal["chat_id"],
+                text=f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 ₹{deal['amount']}\n👤 @{deal['buyer']}\n\n👥 𝐒𝐞𝐥𝐥𝐞𝐫 𝐜𝐚𝐧 𝐝𝐞𝐥𝐢𝐯𝐞𝐫 𝐭𝐡𝐞 𝐩𝐫𝐨𝐝𝐮𝐜𝐭.",
+                parse_mode="Markdown"
+            )
+            
+            # Notify seller
+            if deal.get("seller_id"):
+                await context.bot.send_message(
+                    chat_id=deal["seller_id"],
+                    text=f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 ₹{deal['amount']}\n\n🎁 𝐏𝐥𝐞𝐚𝐬𝐞 𝐝𝐞𝐥𝐢𝐯𝐞𝐫 𝐭𝐡𝐞 𝐩𝐫𝐨𝐝𝐮𝐜𝐭.",
+                    parse_mode="Markdown"
+                )
+            
+            # Notify owner
+            await context.bot.send_message(
+                chat_id=OWNER_ID,
+                text=f"💰 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐕𝐄𝐑𝐈𝐅𝐈𝐄𝐃!\n📋 {deal_id}\n💰 ₹{deal['amount']}\n🔖 {tx_id}\n👤 @{deal['buyer']}"
+            )
+        else:
+            await update.message.reply_text(
+                f"❌ 𝐀𝐦𝐨𝐮𝐧𝐭 𝐦𝐢𝐬𝐦𝐚𝐭𝐜𝐡!\n\n"
+                f"𝐄𝐱𝐩𝐞𝐜𝐭𝐞𝐝: ₹{deal['qr_amount']}\n"
+                f"𝐑𝐞𝐜𝐞𝐢𝐯𝐞𝐝: ₹{amount}\n\n"
+                f"𝐏𝐥𝐞𝐚𝐬𝐞 𝐜𝐡𝐞𝐜𝐤 𝐚𝐧𝐝 𝐭𝐫𝐲 𝐚𝐠𝐚𝐢𝐧.",
+                parse_mode="Markdown"
+            )
+    else:
+        # TXN ID not found - store for verification
+        pending_tx[tx_id] = {
+            "tx_id": tx_id,
+            "deal_id": deal_id,
+            "user_id": user_id,
+            "amount": None,
+            "timestamp": str(datetime.now()),
+            "status": "pending"
+        }
+        save_pending_tx(pending_tx)
+        
         await update.message.reply_text(
-            f"❌ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐍𝐎𝐓 𝐑𝐄𝐂𝐄𝐈𝐕𝐄𝐃 𝐘𝐄𝐓! ❌\n\n"
-            f"📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n"
-            f"💰 𝐀𝐦𝐨𝐮𝐧𝐭 𝐭𝐨 𝐏𝐚𝐲: ₹{deal['qr_amount']}\n\n"
-            f"🔷 𝐏𝐥𝐞𝐚𝐬𝐞 𝐦𝐚𝐤𝐞 𝐭𝐡𝐞 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 𝐚𝐧𝐝 𝐭𝐡𝐞𝐧 𝐯𝐞𝐫𝐢𝐟𝐲.\n"
-            f"📱 𝐀𝐟𝐭𝐞𝐫 𝐩𝐚𝐲𝐦𝐞𝐧𝐭, 𝐟𝐨𝐫𝐰𝐚𝐫𝐝 𝐭𝐡𝐞 𝐒𝐌𝐒 𝐭𝐨 𝐛𝐨𝐭.\n\n"
-            f"⚠️ 𝐃𝐎 𝐍𝐎𝐓 𝐅𝐀𝐊𝐄 𝐕𝐄𝐑𝐈𝐅𝐘!",
-            parse_mode="Markdown"
-        )
-        return
-    
-    # If payment is received, confirm
-    fancy_amount = to_fancy(str(deal['amount']))
-    
-    await update.message.reply_text(
-        f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃! ✅\n\n"
-        f"📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n"
-        f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n\n"
-        f"🎉 𝐂𝐎𝐍𝐓𝐈𝐍𝐔𝐄 𝐘𝐎𝐔𝐑 𝐃𝐄𝐀𝐋 🎉\n\n"
-        f"📦 𝐀𝐟𝐭𝐞𝐫 𝐫𝐞𝐜𝐞𝐢𝐯𝐢𝐧𝐠 𝐩𝐫𝐨𝐝𝐮𝐜𝐭, 𝐭𝐲𝐩𝐞: `/release {deal_id}`",
-        parse_mode="Markdown"
-    )
-    
-    # Notify group
-    await context.bot.send_message(
-        chat_id=deal["chat_id"],
-        text=f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃 𝐅𝐎𝐑 𝐃𝐄𝐀𝐋 `{deal_id}`!\n\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n👤 𝐁𝐮𝐲𝐞𝐫: @{deal['buyer']}\n\n👥 𝐒𝐞𝐥𝐥𝐞𝐫 𝐜𝐚𝐧 𝐧𝐨𝐰 𝐝𝐞𝐥𝐢𝐯𝐞𝐫 𝐭𝐡𝐞 𝐩𝐫𝐨𝐝𝐮𝐜𝐭.",
-        parse_mode="Markdown"
-    )
-    
-    # Notify seller
-    if deal.get("seller_id"):
-        await context.bot.send_message(
-            chat_id=deal["seller_id"],
-            text=f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n\n🎁 𝐏𝐥𝐞𝐚𝐬𝐞 𝐝𝐞𝐥𝐢𝐯𝐞𝐫 𝐭𝐡𝐞 𝐩𝐫𝐨𝐝𝐮𝐜𝐭 𝐭𝐨 𝐛𝐮𝐲𝐞𝐫.",
+            f"⏳ 𝐓𝐫𝐚𝐧𝐬𝐚𝐜𝐭𝐢𝐨𝐧 𝐈𝐃 `{tx_id}` 𝐫𝐞𝐜𝐞𝐢𝐯𝐞𝐝!\n\n"
+            f"📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n\n"
+            f"⚠️ 𝐏𝐥𝐞𝐚𝐬𝐞 𝐟𝐨𝐫𝐰𝐚𝐫𝐝 𝐭𝐡𝐞 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 𝐒𝐌𝐒 𝐭𝐨 𝐭𝐡𝐢𝐬 𝐛𝐨𝐭.\n"
+            f"📱 𝐀𝐟𝐭𝐞𝐫 𝐒𝐌𝐒 𝐢𝐬 𝐫𝐞𝐜𝐞𝐢𝐯𝐞𝐝, 𝐲𝐨𝐮𝐫 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 𝐰𝐢𝐥𝐥 𝐛𝐞 𝐚𝐮𝐭𝐨-𝐯𝐞𝐫𝐢𝐟𝐢𝐞𝐝.",
             parse_mode="Markdown"
         )
 
-# ============ ADMIN MANUAL PAYMENT CONFIRMATION (For testing/emergency) ============
-async def confirm_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin can manually confirm payment - /confirmpayment DEAL_ID AMOUNT"""
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ 𝐀𝐝𝐦𝐢𝐧 𝐨𝐧𝐥𝐲!")
+# ============ SMS HANDLER (Auto Verify) ============
+async def sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner forwards SMS - auto verifies payment"""
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ 𝐎𝐧𝐥𝐲 𝐨𝐰𝐧𝐞𝐫 𝐜𝐚𝐧 𝐟𝐨𝐫𝐰𝐚𝐫𝐝 𝐒𝐌𝐒!")
         return
     
-    if len(context.args) < 2:
-        await update.message.reply_text("📝 𝐔𝐬𝐚𝐠𝐞: `/confirmpayment 𝐃𝐄𝐀𝐋_𝐈𝐃 𝐀𝐌𝐎𝐔𝐍𝐓`\n\n𝐄𝐱𝐚𝐦𝐩𝐥𝐞: `/confirmpayment K2P9EJY0 40.08`", parse_mode="Markdown")
+    text = update.message.text
+    sms_amount = extract_amount_from_sms(text)
+    tx_id = extract_tx_id_from_sms(text)
+    
+    if not sms_amount:
+        await update.message.reply_text("❌ 𝐂𝐨𝐮𝐥𝐝 𝐧𝐨𝐭 𝐞𝐱𝐭𝐫𝐚𝐜𝐭 𝐚𝐦𝐨𝐮𝐧𝐭 𝐟𝐫𝐨𝐦 𝐒𝐌𝐒.")
         return
     
-    deal_id = context.args[0].upper()
-    amount = float(context.args[1])
+    # Find deal by QR amount
+    deal_id, deal = find_deal_by_qr_amount(sms_amount)
     
-    deal = deals.get(deal_id)
-    
-    if not deal:
-        await update.message.reply_text(f"❌ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐧𝐨𝐭 𝐟𝐨𝐮𝐧𝐝!", parse_mode="Markdown")
-        return
-    
-    if deal["status"] != "𝐀𝐖𝐀𝐈𝐓𝐈𝐍𝐆 𝐏𝐀𝐘𝐌𝐄𝐍𝐓":
-        await update.message.reply_text(f"❌ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐢𝐬 𝐧𝐨𝐭 𝐚𝐰𝐚𝐢𝐭𝐢𝐧𝐠 𝐩𝐚𝐲𝐦𝐞𝐧𝐭!", parse_mode="Markdown")
-        return
-    
-    deal["payment_received"] = True
-    deal["payment_amount"] = amount
-    deal["status"] = "𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃"
-    save_deals(deals)
-    
-    fancy_amount = to_fancy(str(deal['amount']))
-    
-    await update.message.reply_text(f"✅ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐦𝐚𝐧𝐮𝐚𝐥𝐥𝐲 𝐜𝐨𝐧𝐟𝐢𝐫𝐦𝐞𝐝 𝐟𝐨𝐫 𝐝𝐞𝐚𝐥 `{deal_id}`!", parse_mode="Markdown")
-    
-    # Notify buyer
-    if deal.get("buyer_id"):
+    if deal_id and deal:
+        # Auto-verify!
+        deal["payment_received"] = True
+        deal["payment_amount"] = sms_amount
+        if tx_id:
+            deal["payment_txid"] = tx_id
+        deal["status"] = "𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃"
+        save_deals(deals)
+        
+        # Store in verified
+        if tx_id:
+            verified_tx[tx_id] = {"tx_id": tx_id, "amount": sms_amount, "deal_id": deal_id}
+            save_verified_tx(verified_tx)
+        
+        fancy_amount = to_fancy(str(deal['amount']))
+        
+        await update.message.reply_text(f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐀𝐔𝐓𝐎-𝐕𝐄𝐑𝐈𝐅𝐈𝐄𝐃!\n📋 {deal_id}\n💰 ₹{deal['amount']}", parse_mode="Markdown")
+        
+        # Notify group
         await context.bot.send_message(
-            chat_id=deal["buyer_id"],
-            text=f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n\n📦 𝐀𝐟𝐭𝐞𝐫 𝐫𝐞𝐜𝐞𝐢𝐯𝐢𝐧𝐠 𝐩𝐫𝐨𝐝𝐮𝐜𝐭, 𝐭𝐲𝐩𝐞: `/release {deal_id}`",
+            chat_id=deal["chat_id"],
+            text=f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐀𝐔𝐓𝐎-𝐕𝐄𝐑𝐈𝐅𝐈𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 ₹{fancy_amount}\n\n𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐯𝐞𝐫𝐢𝐟𝐢𝐞𝐝!\n👥 𝐒𝐞𝐥𝐥𝐞𝐫 𝐜𝐚𝐧 𝐝𝐞𝐥𝐢𝐯𝐞𝐫.\n👤 𝐁𝐮𝐲𝐞𝐫 𝐰𝐢𝐥𝐥 𝐫𝐞𝐥𝐞𝐚𝐬𝐞 𝐚𝐟𝐭𝐞𝐫 𝐫𝐞𝐜𝐞𝐢𝐯𝐢𝐧𝐠 𝐩𝐫𝐨𝐝𝐮𝐜𝐭.",
             parse_mode="Markdown"
         )
+        
+        # Notify buyer
+        if deal.get("buyer_id"):
+            await context.bot.send_message(
+                chat_id=deal["buyer_id"],
+                text=f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃!\n📋 `{deal_id}`\n💰 ₹{fancy_amount}\n\n📦 𝐀𝐟𝐭𝐞𝐫 𝐫𝐞𝐜𝐞𝐢𝐯𝐢𝐧𝐠 𝐩𝐫𝐨𝐝𝐮𝐜𝐭: `/release {deal_id}`",
+                parse_mode="Markdown"
+            )
+        
+        # Notify seller
+        if deal.get("seller_id"):
+            await context.bot.send_message(
+                chat_id=deal["seller_id"],
+                text=f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃!\n📋 `{deal_id}`\n💰 ₹{fancy_amount}\n\n🎁 𝐏𝐥𝐞𝐚𝐬𝐞 𝐝𝐞𝐥𝐢𝐯𝐞𝐫 𝐭𝐡𝐞 𝐩𝐫𝐨𝐝𝐮𝐜𝐭.",
+                parse_mode="Markdown"
+            )
+    else:
+        # No matching deal - store for manual
+        if tx_id:
+            pending_tx[tx_id] = {"tx_id": tx_id, "amount": sms_amount, "raw_sms": text[:200]}
+            save_pending_tx(pending_tx)
+        
+        await update.message.reply_text(f"⚠️ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐝𝐞𝐭𝐞𝐜𝐭𝐞𝐝!\n💰 ₹{sms_amount}\n❌ 𝐍𝐨 𝐦𝐚𝐭𝐜𝐡𝐢𝐧𝐠 𝐝𝐞𝐚𝐥!")
 
 # ============ BUYER RELEASE COMMAND ============
 async def release_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if len(context.args) < 1:
-        await update.message.reply_text("📝 𝐔𝐬𝐚𝐠𝐞: `/release 𝐃𝐄𝐀𝐋_𝐈𝐃`\n\n𝐄𝐱𝐚𝐦𝐩𝐥𝐞: `/release K2P9EJY0`", parse_mode="Markdown")
+        await update.message.reply_text("📝 /release 𝐃𝐄𝐀𝐋_𝐈𝐃", parse_mode="Markdown")
         return
     
     deal_id = context.args[0].upper()
@@ -487,44 +496,42 @@ async def release_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if user_id != deal.get("buyer_id"):
-        await update.message.reply_text("❌ 𝐎𝐧𝐥𝐲 𝐛𝐮𝐲𝐞𝐫 𝐜𝐚𝐧 𝐫𝐞𝐥𝐞𝐚𝐬𝐞 𝐭𝐡𝐞 𝐝𝐞𝐚𝐥!")
+        await update.message.reply_text("❌ 𝐎𝐧𝐥𝐲 𝐛𝐮𝐲𝐞𝐫 𝐜𝐚𝐧 𝐫𝐞𝐥𝐞𝐚𝐬𝐞!")
         return
     
     if deal["status"] != "𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃":
-        await update.message.reply_text(f"❌ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐢𝐬 𝐧𝐨𝐭 𝐫𝐞𝐚𝐝𝐲 𝐟𝐨𝐫 𝐫𝐞𝐥𝐞𝐚𝐬𝐞!", parse_mode="Markdown")
+        await update.message.reply_text(f"❌ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐧𝐨𝐭 𝐫𝐞𝐚𝐝𝐲 𝐟𝐨𝐫 𝐫𝐞𝐥𝐞𝐚𝐬𝐞!", parse_mode="Markdown")
         return
     
     if deal.get("release_requested"):
-        await update.message.reply_text("❌ 𝐑𝐞𝐥𝐞𝐚𝐬𝐞 𝐚𝐥𝐫𝐞𝐚𝐝𝐲 𝐫𝐞𝐪𝐮𝐞𝐬𝐭𝐞𝐝! 𝐖𝐚𝐢𝐭𝐢𝐧𝐠 𝐟𝐨𝐫 𝐬𝐞𝐥𝐥𝐞𝐫'𝐬 𝐔𝐏𝐈.")
+        await update.message.reply_text("❌ 𝐑𝐞𝐥𝐞𝐚𝐬𝐞 𝐚𝐥𝐫𝐞𝐚𝐝𝐲 𝐫𝐞𝐪𝐮𝐞𝐬𝐭𝐞𝐝!")
         return
     
     deal["release_requested"] = True
     save_deals(deals)
     
-    fancy_amount = to_fancy(str(deal['amount']))
-    
-    await update.message.reply_text(f"✅ 𝐑𝐞𝐥𝐞𝐚𝐬𝐞 𝐫𝐞𝐪𝐮𝐞𝐬𝐭𝐞𝐝 𝐟𝐨𝐫 𝐝𝐞𝐚𝐥 `{deal_id}`!\n\n👥 𝐒𝐞𝐥𝐥𝐞𝐫 @{deal['seller']} 𝐰𝐢𝐥𝐥 𝐧𝐨𝐰 𝐩𝐫𝐨𝐯𝐢𝐝𝐞 𝐭𝐡𝐞𝐢𝐫 𝐔𝐏𝐈 𝐈𝐃.", parse_mode="Markdown")
+    await update.message.reply_text(f"✅ 𝐑𝐞𝐥𝐞𝐚𝐬𝐞 𝐫𝐞𝐪𝐮𝐞𝐬𝐭𝐞𝐝!\n\n👥 𝐒𝐞𝐥𝐥𝐞𝐫 @{deal['seller']} - 𝐒𝐞𝐧𝐝 𝐲𝐨𝐮𝐫 𝐔𝐏𝐈:", parse_mode="Markdown")
     
     if deal.get("seller_id"):
         await context.bot.send_message(
             chat_id=deal["seller_id"],
-            text=f"🔷 𝐑𝐄𝐋𝐄𝐀𝐒𝐄 𝐑𝐄𝐐𝐔𝐄𝐒𝐓 𝐑𝐄𝐂𝐄𝐈𝐕𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n\n👤 𝐁𝐮𝐲𝐞𝐫 @{deal['buyer']} 𝐡𝐚𝐬 𝐜𝐨𝐧𝐟𝐢𝐫𝐦𝐞𝐝 𝐫𝐞𝐜𝐞𝐢𝐯𝐢𝐧𝐠 𝐭𝐡𝐞 𝐩𝐫𝐨𝐝𝐮𝐜𝐭.\n\n📝 𝐏𝐥𝐞𝐚𝐬𝐞 𝐬𝐞𝐧𝐝 𝐲𝐨𝐮𝐫 𝐔𝐏𝐈 𝐈𝐃 𝐭𝐨 𝐫𝐞𝐜𝐞𝐢𝐯𝐞 𝐩𝐚𝐲𝐦𝐞𝐧𝐭:\n`/sendupi {deal_id} 𝐘𝐎𝐔𝐑_𝐔𝐏𝐈_𝐈𝐃`\n\n𝐄𝐱𝐚𝐦𝐩𝐥𝐞: `/sendupi {deal_id} yourname@okhdfcbank`",
+            text=f"🔷 𝐑𝐄𝐋𝐄𝐀𝐒𝐄 𝐑𝐄𝐐𝐔𝐄𝐒𝐓!\n\n📋 `{deal_id}`\n💰 ₹{deal['amount']}\n\n📝 `/sendupi {deal_id} 𝐘𝐎𝐔𝐑_𝐔𝐏𝐈`",
             parse_mode="Markdown"
         )
 
-# ============ SELLER SEND UPI COMMAND ============
+# ============ SELLER SEND UPI ============
 async def send_upi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if len(context.args) < 2:
-        await update.message.reply_text("📝 𝐔𝐬𝐚𝐠𝐞: `/sendupi 𝐃𝐄𝐀𝐋_𝐈𝐃 𝐔𝐏𝐈_𝐈𝐃`\n\n𝐄𝐱𝐚𝐦𝐩𝐥𝐞: `/sendupi K2P9EJY0 venomxpay@naviaxis`", parse_mode="Markdown")
+        await update.message.reply_text("📝 /sendupi 𝐃𝐄𝐀𝐋_𝐈𝐃 𝐔𝐏𝐈_𝐈𝐃", parse_mode="Markdown")
         return
     
     deal_id = context.args[0].upper()
     upi_id = context.args[1]
     
     if not re.match(r'^[\w\.\-]+@[\w\.\-]+$', upi_id):
-        await update.message.reply_text("❌ 𝐈𝐧𝐯𝐚𝐥𝐢𝐝 𝐔𝐏𝐈 𝐈𝐃! 𝐅𝐨𝐫𝐦𝐚𝐭: 𝐧𝐚𝐦𝐞@𝐛𝐚𝐧𝐤")
+        await update.message.reply_text("❌ 𝐈𝐧𝐯𝐚𝐥𝐢𝐝 𝐔𝐏𝐈! 𝐟𝐨𝐫𝐦𝐚𝐭: 𝐧𝐚𝐦𝐞@𝐛𝐚𝐧𝐤")
         return
     
     deal = deals.get(deal_id)
@@ -534,50 +541,35 @@ async def send_upi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if user_id != deal.get("seller_id"):
-        await update.message.reply_text(f"❌ 𝐎𝐧𝐥𝐲 𝐬𝐞𝐥𝐥𝐞𝐫 @{deal['seller']} 𝐜𝐚𝐧 𝐩𝐫𝐨𝐯𝐢𝐝𝐞 𝐔𝐏𝐈 𝐈𝐃!")
+        await update.message.reply_text(f"❌ 𝐎𝐧𝐥𝐲 @{deal['seller']} 𝐜𝐚𝐧 𝐬𝐞𝐧𝐝 𝐔𝐏𝐈!")
         return
     
     if not deal.get("release_requested"):
-        await update.message.reply_text(f"❌ 𝐁𝐮𝐲𝐞𝐫 𝐡𝐚𝐬 𝐧𝐨𝐭 𝐫𝐞𝐪𝐮𝐞𝐬𝐭𝐞𝐝 𝐫𝐞𝐥𝐞𝐚𝐬𝐞 𝐲𝐞𝐭!")
+        await update.message.reply_text("❌ 𝐁𝐮𝐲𝐞𝐫 𝐡𝐚𝐬𝐧'𝐭 𝐫𝐞𝐪𝐮𝐞𝐬𝐭𝐞𝐝 𝐫𝐞𝐥𝐞𝐚𝐬𝐞 𝐲𝐞𝐭!")
         return
     
     if deal.get("seller_upi"):
-        await update.message.reply_text(f"❌ 𝐔𝐏𝐈 𝐈𝐃 𝐚𝐥𝐫𝐞𝐚𝐝𝐲 𝐩𝐫𝐨𝐯𝐢𝐝𝐞𝐝!")
+        await update.message.reply_text("❌ 𝐔𝐏𝐈 𝐚𝐥𝐫𝐞𝐚𝐝𝐲 𝐩𝐫𝐨𝐯𝐢𝐝𝐞𝐝!")
         return
     
     deal["seller_upi"] = upi_id
     save_deals(deals)
     
-    fancy_amount = to_fancy(str(deal['amount']))
-    
-    await update.message.reply_text(
-        f"✅ 𝐔𝐏𝐈 𝐈𝐃 𝐫𝐞𝐜𝐞𝐢𝐯𝐞𝐝 𝐟𝐨𝐫 𝐝𝐞𝐚𝐥 `{deal_id}`!\n\n"
-        f"💳 𝐔𝐏𝐈: `{upi_id}`\n\n"
-        f"💰 𝐘𝐨𝐮𝐫 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 𝐨𝐟 ₹{fancy_amount} 𝐰𝐢𝐥𝐥 𝐛𝐞 𝐜𝐫𝐞𝐝𝐢𝐭𝐞𝐝 𝐢𝐧 𝟏𝟎-𝟐𝟎 𝐦𝐢𝐧𝐮𝐭𝐞𝐬.\n"
-        f"👑 𝐎𝐰𝐧𝐞𝐫 𝐰𝐢𝐥𝐥 𝐩𝐫𝐨𝐜𝐞𝐬𝐬 𝐭𝐡𝐞 𝐭𝐫𝐚𝐧𝐬𝐟𝐞𝐫 𝐬𝐡𝐨𝐫𝐭𝐥𝐲.\n\n"
-        f"𝐓𝐡𝐚𝐧𝐤 𝐲𝐨𝐮 𝐟𝐨𝐫 𝐮𝐬𝐢𝐧𝐠 𝐄𝐒𝐂𝐑𝐎𝐖 𝐁𝐎𝐓!",
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text(f"✅ 𝐔𝐏𝐈 𝐫𝐞𝐜𝐞𝐢𝐯𝐞𝐝!\n💳 `{upi_id}`\n\n💰 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐢𝐧 𝟏𝟎-𝟐𝟎 𝐦𝐢𝐧𝐮𝐭𝐞𝐬.", parse_mode="Markdown")
     
     await context.bot.send_message(
         chat_id=OWNER_ID,
-        text=f"💰 𝐑𝐄𝐋𝐄𝐀𝐒𝐄 𝐑𝐄𝐐𝐔𝐄𝐒𝐓 𝐏𝐄𝐍𝐃𝐈𝐍𝐆!\n\n"
-              f"📋 𝐃𝐞𝐚𝐥 𝐈𝐃: {deal_id}\n"
-              f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{deal['amount']}\n"
-              f"👤 𝐁𝐮𝐲𝐞𝐫: @{deal['buyer']}\n"
-              f"👥 𝐒𝐞𝐥𝐥𝐞𝐫: @{deal['seller']}\n"
-              f"💳 𝐒𝐞𝐥𝐥𝐞𝐫 𝐔𝐏𝐈: {upi_id}\n\n"
-              f"✅ 𝐔𝐬𝐞 `/complete {deal_id}` 𝐭𝐨 𝐦𝐚𝐫𝐤 𝐝𝐞𝐚𝐥 𝐚𝐬 𝐜𝐨𝐦𝐩𝐥𝐞𝐭𝐞𝐝 𝐚𝐟𝐭𝐞𝐫 𝐭𝐫𝐚𝐧𝐬𝐟𝐞𝐫𝐫𝐢𝐧𝐠 𝐦𝐨𝐧𝐞𝐲."
+        text=f"💰 𝐑𝐄𝐋𝐄𝐀𝐒𝐄 𝐑𝐄𝐐𝐔𝐄𝐒𝐓!\n📋 {deal_id}\n💰 ₹{deal['amount']}\n💳 𝐒𝐞𝐥𝐥𝐞𝐫 𝐔𝐏𝐈: {upi_id}\n\n✅ `/complete {deal_id}`"
     )
 
-# ============ OWNER COMPLETE DEAL COMMAND ============
+# ============ OWNER COMPLETE DEAL ============
 async def complete_deal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("❌ 𝐎𝐧𝐥𝐲 𝐨𝐰𝐧𝐞𝐫 𝐜𝐚𝐧 𝐜𝐨𝐦𝐩𝐥𝐞𝐭𝐞 𝐭𝐡𝐞 𝐝𝐞𝐚𝐥!")
+        await update.message.reply_text("❌ 𝐎𝐰𝐧𝐞𝐫 𝐨𝐧𝐥𝐲!")
         return
     
     if len(context.args) < 1:
-        await update.message.reply_text("📝 𝐔𝐬𝐚𝐠𝐞: `/complete 𝐃𝐄𝐀𝐋_𝐈𝐃`", parse_mode="Markdown")
+        await update.message.reply_text("📝 /complete 𝐃𝐄𝐀𝐋_𝐈𝐃", parse_mode="Markdown")
         return
     
     deal_id = context.args[0].upper()
@@ -588,15 +580,15 @@ async def complete_deal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if deal["status"] != "𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃":
-        await update.message.reply_text(f"❌ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 𝐧𝐨𝐭 𝐜𝐨𝐧𝐟𝐢𝐫𝐦𝐞𝐝 𝐲𝐞𝐭!", parse_mode="Markdown")
+        await update.message.reply_text(f"❌ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐧𝐨𝐭 𝐜𝐨𝐧𝐟𝐢𝐫𝐦𝐞𝐝!", parse_mode="Markdown")
         return
     
     if not deal.get("release_requested"):
-        await update.message.reply_text("❌ 𝐁𝐮𝐲𝐞𝐫 𝐡𝐚𝐬𝐧'𝐭 𝐫𝐞𝐪𝐮𝐞𝐬𝐭𝐞𝐝 𝐫𝐞𝐥𝐞𝐚𝐬𝐞 𝐲𝐞𝐭!")
+        await update.message.reply_text("❌ 𝐍𝐨 𝐫𝐞𝐥𝐞𝐚𝐬𝐞 𝐫𝐞𝐪𝐮𝐞𝐬𝐭!")
         return
     
     if not deal.get("seller_upi"):
-        await update.message.reply_text("❌ 𝐒𝐞𝐥𝐥𝐞𝐫 𝐡𝐚𝐬𝐧'𝐭 𝐩𝐫𝐨𝐯𝐢𝐝𝐞𝐝 𝐔𝐏𝐈 𝐈𝐃 𝐲𝐞𝐭!")
+        await update.message.reply_text("❌ 𝐍𝐨 𝐔𝐏𝐈 𝐩𝐫𝐨𝐯𝐢𝐝𝐞𝐝!")
         return
     
     deal["status"] = "𝐂𝐎𝐌𝐏𝐋𝐄𝐓𝐄𝐃"
@@ -606,33 +598,27 @@ async def complete_deal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await context.bot.send_message(
         chat_id=deal["chat_id"],
-        text=f"✅ 𝐃𝐄𝐀𝐋 𝐂𝐎𝐌𝐏𝐋𝐄𝐓𝐄𝐃! ✅\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n👤 𝐁𝐮𝐲𝐞𝐫: @{deal['buyer']}\n👥 𝐒𝐞𝐥𝐥𝐞𝐫: @{deal['seller']}\n\n🎉 𝐓𝐫𝐚𝐧𝐬𝐚𝐜𝐭𝐢𝐨𝐧 𝐬𝐮𝐜𝐜𝐞𝐬𝐬𝐟𝐮𝐥𝐥𝐲 𝐜𝐨𝐦𝐩𝐥𝐞𝐭𝐞𝐝!",
+        text=f"✅ 𝐃𝐄𝐀𝐋 𝐂𝐎𝐌𝐏𝐋𝐄𝐓𝐄𝐃! ✅\n\n📋 `{deal_id}`\n💰 ₹{fancy_amount}\n👤 @{deal['buyer']} ↔ @{deal['seller']}\n\n🎉 𝐓𝐫𝐚𝐧𝐬𝐚𝐜𝐭𝐢𝐨𝐧 𝐜𝐨𝐦𝐩𝐥𝐞𝐭𝐞𝐝!",
         parse_mode="Markdown"
     )
     
     if deal.get("seller_id"):
         await context.bot.send_message(
             chat_id=deal["seller_id"],
-            text=f"✅ 𝐃𝐄𝐀𝐋 𝐂𝐎𝐌𝐏𝐋𝐄𝐓𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n\n💳 𝐅𝐮𝐧𝐝𝐬 𝐡𝐚𝐯𝐞 𝐛𝐞𝐞𝐧 𝐭𝐫𝐚𝐧𝐬𝐟𝐞𝐫𝐫𝐞𝐝 𝐭𝐨 𝐲𝐨𝐮𝐫 𝐔𝐏𝐈: {deal['seller_upi']}\n\n𝐓𝐡𝐚𝐧𝐤 𝐲𝐨𝐮!",
+            text=f"✅ 𝐃𝐄𝐀𝐋 𝐂𝐎𝐌𝐏𝐋𝐄𝐓𝐄𝐃!\n📋 `{deal_id}`\n💰 ₹{fancy_amount}\n💳 𝐅𝐮𝐧𝐝𝐬 𝐭𝐫𝐚𝐧𝐬𝐟𝐞𝐫𝐫𝐞𝐝 𝐭𝐨 {deal['seller_upi']}",
             parse_mode="Markdown"
         )
     
-    if deal.get("buyer_id"):
-        await context.bot.send_message(
-            chat_id=deal["buyer_id"],
-            text=f"✅ 𝐃𝐄𝐀𝐋 𝐂𝐎𝐌𝐏𝐋𝐄𝐓𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n\n𝐓𝐡𝐚𝐧𝐤 𝐲𝐨𝐮 𝐟𝐨𝐫 𝐮𝐬𝐢𝐧𝐠 𝐄𝐒𝐂𝐑𝐎𝐖 𝐁𝐎𝐓!",
-            parse_mode="Markdown"
-        )
-    
-    await update.message.reply_text(f"✅ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐦𝐚𝐫𝐤𝐞𝐝 𝐚𝐬 𝐜𝐨𝐦𝐩𝐥𝐞𝐭𝐞𝐝!", parse_mode="Markdown")
+    await update.message.reply_text(f"✅ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐜𝐨𝐦𝐩𝐥𝐞𝐭𝐞𝐝!", parse_mode="Markdown")
 
-# ============ OWNER PANEL COMMANDS ============
+# ============ OWNER PANEL ============
 async def owner_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("❌ 𝐎𝐧𝐥𝐲 𝐨𝐰𝐧𝐞𝐫 𝐜𝐚𝐧 𝐮𝐬𝐞 𝐭𝐡𝐢𝐬!")
+        await update.message.reply_text("❌ 𝐎𝐰𝐧𝐞𝐫 𝐨𝐧𝐥𝐲!")
         return
     
     total_users = len(users)
+    total_deals = len(deals)
     active_deals = len([d for d in deals.values() if d["status"] not in ["𝐂𝐎𝐌𝐏𝐋𝐄𝐓𝐄𝐃", "𝐂𝐀𝐍𝐂𝐄𝐋𝐋𝐄𝐃"]])
     completed_deals = len([d for d in deals.values() if d["status"] == "𝐂𝐎𝐌𝐏𝐋𝐄𝐓𝐄𝐃"])
     total_volume = sum([d["amount"] for d in deals.values() if d["status"] == "𝐂𝐎𝐌𝐏𝐋𝐄𝐓𝐄𝐃"])
@@ -642,20 +628,20 @@ async def owner_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"━━━━━━━━━━━━━━━━━━\n"
         f"📊 𝐒𝐓𝐀𝐓𝐈𝐒𝐓𝐈𝐂𝐒\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"👥 𝐓𝐨𝐭𝐚𝐥 𝐔𝐬𝐞𝐫𝐬: {total_users}\n"
-        f"📋 𝐀𝐜𝐭𝐢𝐯𝐞 𝐃𝐞𝐚𝐥𝐬: {active_deals}\n"
-        f"✅ 𝐂𝐨𝐦𝐩𝐥𝐞𝐭𝐞𝐝 𝐃𝐞𝐚𝐥𝐬: {completed_deals}\n"
-        f"💰 𝐓𝐨𝐭𝐚𝐥 𝐕𝐨𝐥𝐮𝐦𝐞: ₹{total_volume}\n\n"
+        f"👥 𝐔𝐬𝐞𝐫𝐬: {total_users}\n"
+        f"📋 𝐓𝐨𝐭𝐚𝐥 𝐃𝐞𝐚𝐥𝐬: {total_deals}\n"
+        f"📋 𝐀𝐜𝐭𝐢𝐯𝐞: {active_deals}\n"
+        f"✅ 𝐂𝐨𝐦𝐩𝐥𝐞𝐭𝐞𝐝: {completed_deals}\n"
+        f"💰 𝐕𝐨𝐥𝐮𝐦𝐞: ₹{total_volume}\n\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"👑 𝐂𝐎𝐌𝐌𝐀𝐍𝐃𝐒\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"📋 `/users` - 𝐋𝐢𝐬𝐭 𝐚𝐥𝐥 𝐮𝐬𝐞𝐫𝐬\n"
-        f"📋 `/deals` - 𝐋𝐢𝐬𝐭 𝐚𝐥𝐥 𝐝𝐞𝐚𝐥𝐬\n"
-        f"🚫 `/ban 𝐔𝐒𝐄𝐑_𝐈𝐃` - 𝐁𝐚𝐧 𝐮𝐬𝐞𝐫\n"
-        f"✅ `/unban 𝐔𝐒𝐄𝐑_𝐈𝐃` - 𝐔𝐧𝐛𝐚𝐧 𝐮𝐬𝐞𝐫\n"
-        f"💰 `/complete 𝐃𝐄𝐀𝐋_𝐈𝐃` - 𝐂𝐨𝐦𝐩𝐥𝐞𝐭𝐞 𝐝𝐞𝐚𝐥\n"
-        f"➕ `/addadmin 𝐔𝐒𝐄𝐑_𝐈𝐃` - 𝐀𝐝𝐝 𝐚𝐝𝐦𝐢𝐧\n"
-        f"🔧 `/confirmpayment 𝐃𝐄𝐀𝐋_𝐈𝐃 𝐀𝐌𝐎𝐔𝐍𝐓` - 𝐌𝐚𝐧𝐮𝐚𝐥 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 𝐜𝐨𝐧𝐟𝐢𝐫𝐦",
+        f"📋 `/users`\n"
+        f"📋 `/deals`\n"
+        f"🚫 `/ban 𝐈𝐃`\n"
+        f"✅ `/unban 𝐈𝐃`\n"
+        f"💰 `/complete 𝐈𝐃`\n"
+        f"➕ `/addadmin 𝐈𝐃`",
         parse_mode="Markdown"
     )
 
@@ -665,13 +651,13 @@ async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if not users:
-        await update.message.reply_text("📭 𝐍𝐨 𝐮𝐬𝐞𝐫𝐬 𝐟𝐨𝐮𝐧𝐝.")
+        await update.message.reply_text("📭 𝐍𝐨 𝐮𝐬𝐞𝐫𝐬.")
         return
     
-    msg = "👥 𝐔𝐒𝐄𝐑𝐒 𝐋𝐈𝐒𝐓 👥\n━━━━━━━━━━━━━━━━━━\n\n"
+    msg = "👥 𝐔𝐒𝐄𝐑𝐒 👥\n━━━━━━━━━━━━━━━━━━\n"
     for uid, u in users.items():
         status = "🚫 𝐁𝐀𝐍𝐍𝐄𝐃" if u.get('banned') else "✅ 𝐀𝐂𝐓𝐈𝐕𝐄"
-        msg += f"🆔 𝐈𝐃: `{uid}`\n📛 𝐔𝐬𝐞𝐫𝐧𝐚𝐦𝐞: @{u.get('username', '𝐍𝐨𝐧𝐞')}\n📌 𝐒𝐭𝐚𝐭𝐮𝐬: {status}\n━━━━━━━━━━━━━━━━━━\n"
+        msg += f"🆔 `{uid}`\n📛 @{u.get('username', '𝐍𝐨𝐧𝐞')}\n📌 {status}\n━━━━━━━━━━━━━━━━━━\n"
     
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -681,12 +667,12 @@ async def list_deals(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if not deals:
-        await update.message.reply_text("📭 𝐍𝐨 𝐝𝐞𝐚𝐥𝐬 𝐟𝐨𝐮𝐧𝐝.")
+        await update.message.reply_text("📭 𝐍𝐨 𝐝𝐞𝐚𝐥𝐬.")
         return
     
-    msg = "📋 𝐃𝐄𝐀𝐋𝐒 𝐋𝐈𝐒𝐓 📋\n━━━━━━━━━━━━━━━━━━\n\n"
+    msg = "📋 𝐃𝐄𝐀𝐋𝐒 📋\n━━━━━━━━━━━━━━━━━━\n"
     for deal_id, deal in list(deals.items())[-10:]:
-        msg += f"🔖 𝐈𝐃: `{deal_id}`\n💰 ₹{deal['amount']}\n📌 𝐒𝐭𝐚𝐭𝐮𝐬: {deal['status']}\n👤 @{deal['buyer']} → @{deal['seller']}\n━━━━━━━━━━━━━━━━━━\n"
+        msg += f"🔖 `{deal_id}`\n💰 ₹{deal['amount']}\n📌 {deal['status']}\n👤 @{deal['buyer']} → @{deal['seller']}\n━━━━━━━━━━━━━━━━━━\n"
     
     await update.message.reply_text(msg, parse_mode="Markdown")
 
@@ -696,16 +682,14 @@ async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if len(context.args) < 1:
-        await update.message.reply_text("📝 𝐔𝐬𝐚𝐠𝐞: `/ban 𝐔𝐒𝐄𝐑_𝐈𝐃`", parse_mode="Markdown")
+        await update.message.reply_text("📝 /ban 𝐔𝐒𝐄𝐑_𝐈𝐃", parse_mode="Markdown")
         return
     
     user_id = context.args[0]
     if user_id in users:
         users[user_id]['banned'] = True
         save_users(users)
-        await update.message.reply_text(f"✅ 𝐔𝐬𝐞𝐫 `{user_id}` 𝐡𝐚𝐬 𝐛𝐞𝐞𝐧 𝐛𝐚𝐧𝐧𝐞𝐝!", parse_mode="Markdown")
-    else:
-        await update.message.reply_text(f"❌ 𝐔𝐬𝐞𝐫 `{user_id}` 𝐧𝐨𝐭 𝐟𝐨𝐮𝐧𝐝!", parse_mode="Markdown")
+        await update.message.reply_text(f"✅ 𝐔𝐬𝐞𝐫 `{user_id}` 𝐛𝐚𝐧𝐧𝐞𝐝!", parse_mode="Markdown")
 
 async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -713,37 +697,35 @@ async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if len(context.args) < 1:
-        await update.message.reply_text("📝 𝐔𝐬𝐚𝐠𝐞: `/unban 𝐔𝐒𝐄𝐑_𝐈𝐃`", parse_mode="Markdown")
+        await update.message.reply_text("📝 /unban 𝐔𝐒𝐄𝐑_𝐈𝐃", parse_mode="Markdown")
         return
     
     user_id = context.args[0]
     if user_id in users:
         users[user_id]['banned'] = False
         save_users(users)
-        await update.message.reply_text(f"✅ 𝐔𝐬𝐞𝐫 `{user_id}` 𝐡𝐚𝐬 𝐛𝐞𝐞𝐧 𝐮𝐧𝐛𝐚𝐧𝐧𝐞𝐝!", parse_mode="Markdown")
-    else:
-        await update.message.reply_text(f"❌ 𝐔𝐬𝐞𝐫 `{user_id}` 𝐧𝐨𝐭 𝐟𝐨𝐮𝐧𝐝!", parse_mode="Markdown")
+        await update.message.reply_text(f"✅ 𝐔𝐬𝐞𝐫 `{user_id}` 𝐮𝐧𝐛𝐚𝐧𝐧𝐞𝐝!", parse_mode="Markdown")
 
 async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("❌ 𝐎𝐧𝐥𝐲 𝐨𝐰𝐧𝐞𝐫 𝐜𝐚𝐧 𝐚𝐝𝐝 𝐚𝐝𝐦𝐢𝐧𝐬!")
+        await update.message.reply_text("❌ 𝐎𝐰𝐧𝐞𝐫 𝐨𝐧𝐥𝐲!")
         return
     
     if len(context.args) < 1:
-        await update.message.reply_text("📝 𝐔𝐬𝐚𝐠𝐞: `/addadmin 𝐔𝐒𝐄𝐑_𝐈𝐃`", parse_mode="Markdown")
+        await update.message.reply_text("📝 /addadmin 𝐔𝐒𝐄𝐑_𝐈𝐃", parse_mode="Markdown")
         return
     
     try:
         new_admin = int(context.args[0])
         if new_admin not in ADMIN_IDS:
             ADMIN_IDS.append(new_admin)
-            await update.message.reply_text(f"✅ 𝐔𝐬𝐞𝐫 `{new_admin}` 𝐢𝐬 𝐧𝐨𝐰 𝐚𝐧 𝐚𝐝𝐦𝐢𝐧!", parse_mode="Markdown")
+            await update.message.reply_text(f"✅ `{new_admin}` 𝐢𝐬 𝐧𝐨𝐰 𝐚𝐝𝐦𝐢𝐧!", parse_mode="Markdown")
     except:
-        await update.message.reply_text("❌ 𝐈𝐧𝐯𝐚𝐥𝐢𝐝 𝐔𝐒𝐄𝐑_𝐈𝐃!", parse_mode="Markdown")
+        await update.message.reply_text("❌ 𝐈𝐧𝐯𝐚𝐥𝐢𝐝 𝐈𝐃!")
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) < 1:
-        await update.message.reply_text("📝 𝐔𝐬𝐚𝐠𝐞: `/status 𝐃𝐄𝐀𝐋_𝐈𝐃`", parse_mode="Markdown")
+        await update.message.reply_text("📝 /status 𝐃𝐄𝐀𝐋_𝐈𝐃", parse_mode="Markdown")
         return
     
     deal_id = context.args[0].upper()
@@ -758,18 +740,15 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "𝐀𝐖𝐀𝐈𝐓𝐈𝐍𝐆 𝐏𝐀𝐘𝐌𝐄𝐍𝐓": "💳 𝐖𝐚𝐢𝐭𝐢𝐧𝐠 𝐟𝐨𝐫 𝐩𝐚𝐲𝐦𝐞𝐧𝐭",
         "𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃": "✅ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐜𝐨𝐧𝐟𝐢𝐫𝐦𝐞𝐝",
         "𝐂𝐎𝐌𝐏𝐋𝐄𝐓𝐄𝐃": "🎉 𝐃𝐞𝐚𝐥 𝐜𝐨𝐦𝐩𝐥𝐞𝐭𝐞𝐝",
-        "𝐂𝐀𝐍𝐂𝐄𝐋𝐋𝐄𝐃": "❌ 𝐃𝐞𝐚𝐥 𝐜𝐚𝐧𝐜𝐞𝐥𝐥𝐞𝐝"
+        "𝐂𝐀𝐍𝐂𝐄𝐋𝐋𝐄𝐃": "❌ 𝐂𝐚𝐧𝐜𝐞𝐥𝐥𝐞𝐝"
     }
-    
-    fancy_amount = to_fancy(str(deal['amount']))
     
     await update.message.reply_text(
         f"📋 𝐃𝐄𝐀𝐋 𝐒𝐓𝐀𝐓𝐔𝐒\n━━━━━━━━━━━━━━━━━━\n"
         f"🔖 𝐈𝐃: `{deal_id}`\n"
-        f"📊 𝐒𝐭𝐚𝐭𝐮𝐬: {status_map.get(deal['status'], deal['status'])}\n"
-        f"💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n"
-        f"👤 𝐁𝐮𝐲𝐞𝐫: @{deal['buyer']}\n"
-        f"👥 𝐒𝐞𝐥𝐥𝐞𝐫: @{deal['seller']}",
+        f"📊 {status_map.get(deal['status'], deal['status'])}\n"
+        f"💰 ₹{deal['amount']}\n"
+        f"👤 @{deal['buyer']} → @{deal['seller']}",
         parse_mode="Markdown"
     )
 
@@ -777,7 +756,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if len(context.args) < 1:
-        await update.message.reply_text("📝 𝐔𝐬𝐚𝐠𝐞: `/cancel 𝐃𝐄𝐀𝐋_𝐈𝐃`", parse_mode="Markdown")
+        await update.message.reply_text("📝 /cancel 𝐃𝐄𝐀𝐋_𝐈𝐃", parse_mode="Markdown")
         return
     
     deal_id = context.args[0].upper()
@@ -797,23 +776,22 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     deal["status"] = "𝐂𝐀𝐍𝐂𝐄𝐋𝐋𝐄𝐃"
     save_deals(deals)
-    
     await update.message.reply_text(f"❌ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐜𝐚𝐧𝐜𝐞𝐥𝐥𝐞𝐝!", parse_mode="Markdown")
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await update.message.reply_text(
         f"🔷 𝐄𝐒𝐂𝐑𝐎𝐖 𝐁𝐎𝐓 🔷\n\n"
-        f"👋 𝐖𝐞𝐥𝐜𝐨𝐦𝐞 𝐭𝐨 𝐄𝐒𝐂𝐑𝐎𝐖 𝐁𝐎𝐓, {user.first_name}!\n\n"
-        f"📝 𝐓𝐨 𝐜𝐫𝐞𝐚𝐭𝐞 𝐚 𝐝𝐞𝐚𝐥, 𝐭𝐲𝐩𝐞 𝐢𝐧 𝐚𝐧𝐲 𝐠𝐫𝐨𝐮𝐩:\n\n"
-        f"`ESCROW DEAL FORM !!!\n\nDEAL AMOUNT : 1000\nBUYER : @username\nSELLER : @username\nDEAL DETAIL : Product\nRLS UPI : your@upi\nCONDITION : After payment\nESCROW TILL : 2024-12-31`\n\n"
+        f"👋 𝐖𝐞𝐥𝐜𝐨𝐦𝐞, {user.first_name}!\n\n"
+        f"📝 𝐂𝐫𝐞𝐚𝐭𝐞 𝐝𝐞𝐚𝐥 𝐢𝐧 𝐚𝐧𝐲 𝐠𝐫𝐨𝐮𝐩:\n\n"
+        f"`ESCROW DEAL FORM !!!\n\nDEAL AMOUNT : 1000\nBUYER : @buyer\nSELLER : @seller\nDEAL DETAIL : Product\nRLS UPI : your@upi`\n\n"
         f"━━━━━━━━━━━━━━━━━━\n"
         f"📌 𝐂𝐨𝐦𝐦𝐚𝐧𝐝𝐬:\n"
-        f"• `/status 𝐃𝐄𝐀𝐋_𝐈𝐃` - 𝐂𝐡𝐞𝐜𝐤 𝐝𝐞𝐚𝐥 𝐬𝐭𝐚𝐭𝐮𝐬\n"
-        f"• `/cancel 𝐃𝐄𝐀𝐋_𝐈𝐃` - 𝐂𝐚𝐧𝐜𝐞𝐥 𝐝𝐞𝐚𝐥\n"
-        f"• `/verify 𝐃𝐄𝐀𝐋_𝐈𝐃` - 𝐕𝐞𝐫𝐢𝐟𝐲 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 (𝐎𝐧𝐥𝐲 𝐚𝐟𝐭𝐞𝐫 𝐩𝐚𝐲𝐢𝐧𝐠)\n"
-        f"• `/release 𝐃𝐄𝐀𝐋_𝐈𝐃` - 𝐑𝐞𝐥𝐞𝐚𝐬𝐞 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 (𝐀𝐟𝐭𝐞𝐫 𝐫𝐞𝐜𝐞𝐢𝐯𝐢𝐧𝐠 𝐩𝐫𝐨𝐝𝐮𝐜𝐭)\n\n"
-        f"👑 𝐃𝐞𝐯𝐞𝐥𝐨𝐩𝐞𝐫: @iflexvenom",
+        f"• `/status 𝐈𝐃`\n"
+        f"• `/cancel 𝐈𝐃`\n"
+        f"• `/txn 𝐈𝐃 𝐓𝐗𝐍_𝐈𝐃` - 𝐕𝐞𝐫𝐢𝐟𝐲 𝐩𝐚𝐲𝐦𝐞𝐧𝐭\n"
+        f"• `/release 𝐈𝐃` - 𝐀𝐟𝐭𝐞𝐫 𝐫𝐞𝐜𝐞𝐢𝐯𝐢𝐧𝐠 𝐩𝐫𝐨𝐝𝐮𝐜𝐭\n\n"
+        f"👑 @iflexvenom",
         parse_mode="Markdown"
     )
 
@@ -827,7 +805,7 @@ def main():
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("status", status_command))
     application.add_handler(CommandHandler("cancel", cancel_command))
-    application.add_handler(CommandHandler("verify", verify_command))
+    application.add_handler(CommandHandler("txn", txn_command))
     application.add_handler(CommandHandler("release", release_command))
     application.add_handler(CommandHandler("sendupi", send_upi))
     
@@ -839,20 +817,16 @@ def main():
     application.add_handler(CommandHandler("unban", unban_user))
     application.add_handler(CommandHandler("complete", complete_deal))
     application.add_handler(CommandHandler("addadmin", add_admin))
-    application.add_handler(CommandHandler("confirmpayment", confirm_payment))
     
     # Message handlers
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, sms_handler))
     
     print("=" * 50)
-    print("🔷 ESCROW BOT STARTED - FULLY FIXED")
+    print("🔷 ESCROW BOT STARTED - FINAL FIX")
     print(f"👑 Owner: {OWNER_ID}")
-    print(f"📋 Admins: {ADMIN_IDS}")
-    print("✅ Deal ID - Normal characters (easy copy)")
-    print("✅ Everything else - Fancy characters")
-    print("✅ Auto payment verify via SMS")
-    print("✅ Buyer can /verify ONLY after REAL payment")
+    print("✅ /txn DEAL_ID TXN_ID - Buyer verifies with transaction ID")
+    print("✅ SMS auto-verify via amount matching")
     print("=" * 50)
     
     application.run_polling()
