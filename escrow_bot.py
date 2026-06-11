@@ -34,7 +34,6 @@ PENDING_FILE = "pending.json"
 
 # ============ FANCY TEXT FUNCTION ============
 def to_fancy(text):
-    """Convert text to fancy characters - for normal text only, not for Deal ID"""
     fancy_map = {
         'A': '𝐀', 'B': '𝐁', 'C': '𝐂', 'D': '𝐃', 'E': '𝐄', 'F': '𝐅', 'G': '𝐆', 'H': '𝐇', 'I': '𝐈',
         'J': '𝐉', 'K': '𝐊', 'L': '𝐋', 'M': '𝐌', 'N': '𝐍', 'O': '𝐎', 'P': '𝐏', 'Q': '𝐐', 'R': '𝐑',
@@ -83,7 +82,6 @@ pending_tx = load_pending()
 
 # ============ HELPERS ============
 def generate_deal_id():
-    """Normal Deal ID for easy copy - no fancy chars"""
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
 def calculate_fee(amount):
@@ -123,7 +121,7 @@ def extract_amount_from_sms(text):
 
 def find_deal_by_qr_amount(qr_amount):
     for deal_id, deal in deals.items():
-        if deal.get("qr_amount") == qr_amount and deal["status"] == "awaiting_payment":
+        if deal.get("qr_amount") == qr_amount and deal["status"] == "𝐀𝐖𝐀𝐈𝐓𝐈𝐍𝐆 𝐏𝐀𝐘𝐌𝐄𝐍𝐓":
             return deal_id, deal
     return None, None
 
@@ -217,6 +215,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "seller_id": None,
             "payment_received": False,
             "payment_txid": None,
+            "payment_amount": None,
             "seller_upi": None,
             "release_requested": False
         }
@@ -281,7 +280,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await process_both_agreed(context, deal_id, deal)
                 return
         
-        await update.message.reply_text("❌ 𝐘𝐨𝐮 𝐝𝐨𝐧'𝐭 𝐡𝐚𝐯𝐞 𝐚𝐧𝐲 𝐩𝐞𝐧𝐝𝐢𝐧𝐠 𝐝𝐞𝐚𝐥. 𝐅𝐢𝐫𝐬𝐭 𝐜𝐫𝐞𝐚𝐭𝐞 𝐚 𝐝𝐞𝐚𝐥.")
+        await update.message.reply_text("❌ 𝐘𝐨𝐮 𝐝𝐨𝐧'𝐭 𝐡𝐚𝐯𝐞 𝐚𝐧𝐲 𝐩𝐞𝐧𝐝𝐢𝐧𝐠 𝐝𝐞𝐚𝐥.")
         return
 
 async def process_both_agreed(context, deal_id, deal):
@@ -300,7 +299,7 @@ async def process_both_agreed(context, deal_id, deal):
         await context.bot.send_photo(
             chat_id=deal["buyer_id"],
             photo=photo,
-            caption=f"🔷 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐐𝐑 𝐂𝐎𝐃𝐄 🔷\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐎𝐫𝐢𝐠𝐢𝐧𝐚𝐥: ₹{fancy_amount}\n📊 𝐅𝐞𝐞: ₹{fancy_fee}\n\n💵 𝐏𝐚𝐲 𝐭𝐡𝐢𝐬 𝐞𝐱𝐚𝐜𝐭 𝐚𝐦𝐨𝐮𝐧𝐭: ₹{fancy_qr}\n\n✅ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐰𝐢𝐥𝐥 𝐛𝐞 𝐀𝐔𝐓𝐎-𝐕𝐄𝐑𝐈𝐅𝐈𝐄𝐃 𝐰𝐡𝐞𝐧 𝐒𝐌𝐒 𝐢𝐬 𝐫𝐞𝐜𝐞𝐢𝐯𝐞𝐝\n📸 𝐎𝐫 𝐭𝐲𝐩𝐞 `/verify {deal_id}` 𝐚𝐟𝐭𝐞𝐫 𝐩𝐚𝐲𝐦𝐞𝐧𝐭\n\n❌ 𝐃𝐎𝐍'𝐓 𝐏𝐀𝐘 𝐈𝐍 𝐃𝐌𝐒",
+            caption=f"🔷 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐐𝐑 𝐂𝐎𝐃𝐄 🔷\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐎𝐫𝐢𝐠𝐢𝐧𝐚𝐥: ₹{fancy_amount}\n📊 𝐅𝐞𝐞: ₹{fancy_fee}\n\n💵 𝐏𝐚𝐲 𝐭𝐡𝐢𝐬 𝐞𝐱𝐚𝐜𝐭 𝐚𝐦𝐨𝐮𝐧𝐭: ₹{fancy_qr}\n\n✅ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐰𝐢𝐥𝐥 𝐛𝐞 𝐀𝐔𝐓𝐎-𝐕𝐄𝐑𝐈𝐅𝐈𝐄𝐃 𝐰𝐡𝐞𝐧 𝐒𝐌𝐒 𝐢𝐬 𝐫𝐞𝐜𝐞𝐢𝐯𝐞𝐝\n\n❌ 𝐃𝐎𝐍'𝐓 𝐏𝐀𝐘 𝐈𝐍 𝐃𝐌𝐒",
             parse_mode="Markdown"
         )
     
@@ -328,6 +327,7 @@ async def sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if deal_id and deal:
         deal["payment_received"] = True
+        deal["payment_amount"] = sms_amount
         deal["status"] = "𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃"
         save_deals(deals)
         
@@ -360,9 +360,9 @@ async def sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(f"⚠️ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐝𝐞𝐭𝐞𝐜𝐭𝐞𝐝!\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{sms_amount}\n❌ 𝐍𝐨 𝐦𝐚𝐭𝐜𝐡𝐢𝐧𝐠 𝐝𝐞𝐚𝐥 𝐟𝐨𝐮𝐧𝐝!")
 
-# ============ BUYER VERIFY COMMAND (Manual) ============
+# ============ BUYER VERIFY COMMAND (ONLY AFTER REAL PAYMENT) ============
 async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Buyer can also verify payment - /verify DEAL_ID"""
+    """Buyer can verify ONLY after payment is actually made"""
     user_id = update.effective_user.id
     
     if len(context.args) < 1:
@@ -384,17 +384,26 @@ async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐢𝐬 𝐧𝐨𝐭 𝐚𝐰𝐚𝐢𝐭𝐢𝐧𝐠 𝐩𝐚𝐲𝐦𝐞𝐧𝐭!\n𝐂𝐮𝐫𝐫𝐞𝐧𝐭 𝐬𝐭𝐚𝐭𝐮𝐬: {deal['status']}", parse_mode="Markdown")
         return
     
-    # Check if payment is already marked
-    if deal.get("payment_received"):
-        await update.message.reply_text(f"✅ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐟𝐨𝐫 𝐝𝐞𝐚𝐥 `{deal_id}` 𝐢𝐬 𝐚𝐥𝐫𝐞𝐚𝐝𝐲 𝐜𝐨𝐧𝐟𝐢𝐫𝐦𝐞𝐝!", parse_mode="Markdown")
+    # ============ CRITICAL FIX: Check if payment actually happened ============
+    # Bot will NOT confirm payment unless SMS has been received
+    # Payment can only be confirmed by:
+    # 1. SMS auto-verification (owner forwards SMS)
+    # 2. Admin manually confirms (/confirmpayment DEAL_ID)
+    
+    # If payment is not received yet, buyer CANNOT fake verify
+    if not deal.get("payment_received"):
+        await update.message.reply_text(
+            f"❌ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐍𝐎𝐓 𝐑𝐄𝐂𝐄𝐈𝐕𝐄𝐃 𝐘𝐄𝐓! ❌\n\n"
+            f"📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n"
+            f"💰 𝐀𝐦𝐨𝐮𝐧𝐭 𝐭𝐨 𝐏𝐚𝐲: ₹{deal['qr_amount']}\n\n"
+            f"🔷 𝐏𝐥𝐞𝐚𝐬𝐞 𝐦𝐚𝐤𝐞 𝐭𝐡𝐞 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 𝐚𝐧𝐝 𝐭𝐡𝐞𝐧 𝐯𝐞𝐫𝐢𝐟𝐲.\n"
+            f"📱 𝐀𝐟𝐭𝐞𝐫 𝐩𝐚𝐲𝐦𝐞𝐧𝐭, 𝐟𝐨𝐫𝐰𝐚𝐫𝐝 𝐭𝐡𝐞 𝐒𝐌𝐒 𝐭𝐨 𝐛𝐨𝐭.\n\n"
+            f"⚠️ 𝐃𝐎 𝐍𝐎𝐓 𝐅𝐀𝐊𝐄 𝐕𝐄𝐑𝐈𝐅𝐘!",
+            parse_mode="Markdown"
+        )
         return
     
-    # Simulate check - in real scenario, you would check bank/PG API
-    # For now, we'll confirm the payment manually by buyer
-    deal["payment_received"] = True
-    deal["status"] = "𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃"
-    save_deals(deals)
-    
+    # If payment is received, confirm
     fancy_amount = to_fancy(str(deal['amount']))
     
     await update.message.reply_text(
@@ -420,12 +429,47 @@ async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text=f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n\n🎁 𝐏𝐥𝐞𝐚𝐬𝐞 𝐝𝐞𝐥𝐢𝐯𝐞𝐫 𝐭𝐡𝐞 𝐩𝐫𝐨𝐝𝐮𝐜𝐭 𝐭𝐨 𝐛𝐮𝐲𝐞𝐫.",
             parse_mode="Markdown"
         )
+
+# ============ ADMIN MANUAL PAYMENT CONFIRMATION (For testing/emergency) ============
+async def confirm_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin can manually confirm payment - /confirmpayment DEAL_ID AMOUNT"""
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ 𝐀𝐝𝐦𝐢𝐧 𝐨𝐧𝐥𝐲!")
+        return
     
-    # Notify owner
-    await context.bot.send_message(
-        chat_id=OWNER_ID,
-        text=f"💰 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐕𝐄𝐑𝐈𝐅𝐈𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: {deal_id}\n💰 ₹{deal['amount']}\n👤 𝐁𝐮𝐲𝐞𝐫: @{deal['buyer']}\n\n𝐔𝐬𝐞 `/release {deal_id}` 𝐭𝐨 𝐫𝐞𝐥𝐞𝐚𝐬𝐞 𝐟𝐮𝐧𝐝𝐬."
-    )
+    if len(context.args) < 2:
+        await update.message.reply_text("📝 𝐔𝐬𝐚𝐠𝐞: `/confirmpayment 𝐃𝐄𝐀𝐋_𝐈𝐃 𝐀𝐌𝐎𝐔𝐍𝐓`\n\n𝐄𝐱𝐚𝐦𝐩𝐥𝐞: `/confirmpayment K2P9EJY0 40.08`", parse_mode="Markdown")
+        return
+    
+    deal_id = context.args[0].upper()
+    amount = float(context.args[1])
+    
+    deal = deals.get(deal_id)
+    
+    if not deal:
+        await update.message.reply_text(f"❌ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐧𝐨𝐭 𝐟𝐨𝐮𝐧𝐝!", parse_mode="Markdown")
+        return
+    
+    if deal["status"] != "𝐀𝐖𝐀𝐈𝐓𝐈𝐍𝐆 𝐏𝐀𝐘𝐌𝐄𝐍𝐓":
+        await update.message.reply_text(f"❌ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐢𝐬 𝐧𝐨𝐭 𝐚𝐰𝐚𝐢𝐭𝐢𝐧𝐠 𝐩𝐚𝐲𝐦𝐞𝐧𝐭!", parse_mode="Markdown")
+        return
+    
+    deal["payment_received"] = True
+    deal["payment_amount"] = amount
+    deal["status"] = "𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃"
+    save_deals(deals)
+    
+    fancy_amount = to_fancy(str(deal['amount']))
+    
+    await update.message.reply_text(f"✅ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐦𝐚𝐧𝐮𝐚𝐥𝐥𝐲 𝐜𝐨𝐧𝐟𝐢𝐫𝐦𝐞𝐝 𝐟𝐨𝐫 𝐝𝐞𝐚𝐥 `{deal_id}`!", parse_mode="Markdown")
+    
+    # Notify buyer
+    if deal.get("buyer_id"):
+        await context.bot.send_message(
+            chat_id=deal["buyer_id"],
+            text=f"✅ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃!\n\n📋 𝐃𝐞𝐚𝐥 𝐈𝐃: `{deal_id}`\n💰 𝐀𝐦𝐨𝐮𝐧𝐭: ₹{fancy_amount}\n\n📦 𝐀𝐟𝐭𝐞𝐫 𝐫𝐞𝐜𝐞𝐢𝐯𝐢𝐧𝐠 𝐩𝐫𝐨𝐝𝐮𝐜𝐭, 𝐭𝐲𝐩𝐞: `/release {deal_id}`",
+            parse_mode="Markdown"
+        )
 
 # ============ BUYER RELEASE COMMAND ============
 async def release_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -610,7 +654,8 @@ async def owner_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🚫 `/ban 𝐔𝐒𝐄𝐑_𝐈𝐃` - 𝐁𝐚𝐧 𝐮𝐬𝐞𝐫\n"
         f"✅ `/unban 𝐔𝐒𝐄𝐑_𝐈𝐃` - 𝐔𝐧𝐛𝐚𝐧 𝐮𝐬𝐞𝐫\n"
         f"💰 `/complete 𝐃𝐄𝐀𝐋_𝐈𝐃` - 𝐂𝐨𝐦𝐩𝐥𝐞𝐭𝐞 𝐝𝐞𝐚𝐥\n"
-        f"➕ `/addadmin 𝐔𝐒𝐄𝐑_𝐈𝐃` - 𝐀𝐝𝐝 𝐚𝐝𝐦𝐢𝐧",
+        f"➕ `/addadmin 𝐔𝐒𝐄𝐑_𝐈𝐃` - 𝐀𝐝𝐝 𝐚𝐝𝐦𝐢𝐧\n"
+        f"🔧 `/confirmpayment 𝐃𝐄𝐀𝐋_𝐈𝐃 𝐀𝐌𝐎𝐔𝐍𝐓` - 𝐌𝐚𝐧𝐮𝐚𝐥 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 𝐜𝐨𝐧𝐟𝐢𝐫𝐦",
         parse_mode="Markdown"
     )
 
@@ -766,7 +811,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📌 𝐂𝐨𝐦𝐦𝐚𝐧𝐝𝐬:\n"
         f"• `/status 𝐃𝐄𝐀𝐋_𝐈𝐃` - 𝐂𝐡𝐞𝐜𝐤 𝐝𝐞𝐚𝐥 𝐬𝐭𝐚𝐭𝐮𝐬\n"
         f"• `/cancel 𝐃𝐄𝐀𝐋_𝐈𝐃` - 𝐂𝐚𝐧𝐜𝐞𝐥 𝐝𝐞𝐚𝐥\n"
-        f"• `/verify 𝐃𝐄𝐀𝐋_𝐈𝐃` - 𝐕𝐞𝐫𝐢𝐟𝐲 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 (𝐀𝐟𝐭𝐞𝐫 𝐩𝐚𝐲𝐢𝐧𝐠)\n"
+        f"• `/verify 𝐃𝐄𝐀𝐋_𝐈𝐃` - 𝐕𝐞𝐫𝐢𝐟𝐲 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 (𝐎𝐧𝐥𝐲 𝐚𝐟𝐭𝐞𝐫 𝐩𝐚𝐲𝐢𝐧𝐠)\n"
         f"• `/release 𝐃𝐄𝐀𝐋_𝐈𝐃` - 𝐑𝐞𝐥𝐞𝐚𝐬𝐞 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 (𝐀𝐟𝐭𝐞𝐫 𝐫𝐞𝐜𝐞𝐢𝐯𝐢𝐧𝐠 𝐩𝐫𝐨𝐝𝐮𝐜𝐭)\n\n"
         f"👑 𝐃𝐞𝐯𝐞𝐥𝐨𝐩𝐞𝐫: @iflexvenom",
         parse_mode="Markdown"
@@ -794,6 +839,7 @@ def main():
     application.add_handler(CommandHandler("unban", unban_user))
     application.add_handler(CommandHandler("complete", complete_deal))
     application.add_handler(CommandHandler("addadmin", add_admin))
+    application.add_handler(CommandHandler("confirmpayment", confirm_payment))
     
     # Message handlers
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -806,7 +852,7 @@ def main():
     print("✅ Deal ID - Normal characters (easy copy)")
     print("✅ Everything else - Fancy characters")
     print("✅ Auto payment verify via SMS")
-    print("✅ Buyer can /verify manually")
+    print("✅ Buyer can /verify ONLY after REAL payment")
     print("=" * 50)
     
     application.run_polling()
