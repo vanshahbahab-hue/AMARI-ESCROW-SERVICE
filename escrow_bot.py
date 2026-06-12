@@ -11,7 +11,7 @@ from flask import Flask
 from telegram import Update, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# ============ FLASK ============
+# ============ FLASK FOR RENDER ============
 flask_app = Flask(__name__)
 
 @flask_app.route('/')
@@ -30,6 +30,9 @@ ADMIN_IDS = [OWNER_ID]
 
 DEALS_FILE = "deals.json"
 USERS_FILE = "users.json"
+
+# GLOBAL STORE FOR SMS TRANSACTIONS
+sms_transactions = {}
 
 # ============ FANCY TEXT ============
 def to_fancy(text):
@@ -64,9 +67,6 @@ def save_users(data):
 
 deals = load_deals()
 users = load_users()
-
-# In-memory store for received SMS transactions
-sms_transactions = {}
 
 # ============ HELPERS ============
 def generate_deal_id():
@@ -130,10 +130,11 @@ async def sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     amount = extract_amount_from_sms(text)
     
     if not tx_id or not amount:
-        await update.message.reply_text("❌ Could not extract TXN ID or Amount from SMS.")
+        # Ye error ab sirf SMS forward karne par aayega, form par nahi
+        await update.message.reply_text("❌ Could not extract TXN ID or Amount from this message. Make sure it's a payment SMS.")
         return
     
-    # Store in memory
+    # Store in global memory
     sms_transactions[tx_id] = {
         "tx_id": tx_id,
         "amount": amount,
@@ -141,7 +142,7 @@ async def sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "timestamp": str(datetime.now())
     }
     
-    await update.message.reply_text(f"✅ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐒𝐌𝐒 𝐑𝐄𝐂𝐎𝐑𝐃𝐄𝐃!\n🔖 𝐓𝐗𝐍: `{tx_id}`\n💰 ₹{amount}\n\n📌 𝐍𝐨𝐰 𝐲𝐨𝐮 𝐜𝐚𝐧 𝐯𝐞𝐫𝐢𝐟𝐲.", parse_mode="Markdown")
+    await update.message.reply_text(f"✅ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐒𝐌𝐒 𝐑𝐄𝐂𝐎𝐑𝐃𝐄𝐃!\n🔖 𝐓𝐗𝐍: `{tx_id}`\n💰 ₹{amount}\n\n📌 𝐍𝐨𝐰 𝐲𝐨𝐮 𝐜𝐚𝐧 𝐯𝐞𝐫𝐢𝐟𝐲 𝐭𝐡𝐞 𝐝𝐞𝐚𝐥.", parse_mode="Markdown")
     
     # Auto-verify any pending deal waiting for this amount
     for deal_id, deal in deals.items():
@@ -185,7 +186,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text_lower = message_text.lower()
     user_id = user.id
     
-    # Register user
+    # Register user if new
     is_new = register_user(user_id, user.username or "NoUsername", user.first_name)
     if is_new and user_id != OWNER_ID:
         await context.bot.send_message(
@@ -197,7 +198,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ 𝐘𝐨𝐮 𝐚𝐫𝐞 𝐛𝐚𝐧𝐧𝐞𝐝.")
         return
     
-    # ============ ESCROW FORM ============
+    # ============ ESCROW FORM DETECTION ============
     if re.search(r'ESCROW\s*DEAL\s*FORM', message_text, re.IGNORECASE):
         amount_match = re.search(r'DEAL\s*AMOUNT\s*:?\s*[-\s]*(\d+)', message_text, re.IGNORECASE)
         buyer_match = re.search(r'BUYERS?\s*:?\s*[-\s]*@?(\w+)', message_text, re.IGNORECASE)
@@ -245,12 +246,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ✅ @{buyer} - 𝐓𝐲𝐩𝐞 `𝐀𝐆𝐑𝐄𝐄`
 ✅ @{seller} - 𝐓𝐲𝐩𝐞 `𝐀𝐆𝐑𝐄𝐄`
+
+🕐 𝟏𝟎 𝐦𝐢𝐧𝐮𝐭𝐞𝐬!
 """, parse_mode="Markdown")
         
         await context.bot.send_message(chat_id=OWNER_ID, text=f"🆕 𝐍𝐄𝐖 𝐃𝐄𝐀𝐋!\n📋 {deal_id}\n💰 ₹{amount}\n@{buyer} → @{seller}")
         return
     
-    # ============ AGREE ============
+    # ============ AGREE DETECTION ============
     agree_words = ['agree', 'agre', 'argee', 'agr', 'yes', 'done', 'ok', 'y']
     is_agree = any(word == text_lower or text_lower.startswith(word) for word in agree_words)
     
@@ -303,6 +306,7 @@ async def process_both_agreed(context, deal_id, deal):
 
 # ============ VERIFY COMMAND (Checks SMS transactions) ============
 async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Buyer: /verify DEAL_ID TRANSACTION_ID"""
     user_id = update.effective_user.id
     
     if len(context.args) < 2:
@@ -333,7 +337,7 @@ async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"✅ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐚𝐥𝐫𝐞𝐚𝐝𝐲 𝐯𝐞𝐫𝐢𝐟𝐢𝐞𝐝!", parse_mode="Markdown")
         return
     
-    # ============ MAIN FIX: Check if SMS transaction exists ============
+    # Check if SMS transaction exists in global store
     if tx_id in sms_transactions:
         txn_data = sms_transactions[tx_id]
         amount = txn_data.get('amount')
@@ -378,13 +382,13 @@ async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐍𝐎𝐓 𝐑𝐄𝐂𝐄𝐈𝐕𝐄𝐃! ❌\n\n"
             f"📋 `{deal_id}`\n💰 ₹{deal['amount']}\n\n"
             f"⚠️ 𝐓𝐗𝐍 `{tx_id}` 𝐧𝐨𝐭 𝐟𝐨𝐮𝐧𝐝 𝐢𝐧 𝐨𝐮𝐫 𝐫𝐞𝐜𝐨𝐫𝐝𝐬.\n\n"
-            f"📱 𝐏𝐥𝐞𝐚𝐬𝐞 𝐦𝐚𝐤𝐞 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 𝐟𝐢𝐫𝐬𝐭.\n"
-            f"🔖 𝐒𝐌𝐒 𝐰𝐢𝐥𝐥 𝐛𝐞 𝐚𝐮𝐭𝐨-𝐝𝐞𝐭𝐞𝐜𝐭𝐞𝐝 𝐰𝐡𝐞𝐧 𝐲𝐨𝐮 𝐩𝐚𝐲.\n\n"
+            f"📱 𝐏𝐥𝐞𝐚𝐬𝐞 𝐦𝐚𝐤𝐞 𝐭𝐡𝐞 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 𝐟𝐢𝐫𝐬𝐭.\n"
+            f"🔖 𝐓𝐡𝐞 𝐭𝐫𝐚𝐧𝐬𝐚𝐜𝐭𝐢𝐨𝐧 𝐈𝐃 𝐰𝐢𝐥𝐥 𝐛𝐞 𝐚𝐮𝐭𝐨-𝐝𝐞𝐭𝐞𝐜𝐭𝐞𝐝 𝐰𝐡𝐞𝐧 𝐭𝐡𝐞 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 𝐒𝐌𝐒 𝐢𝐬 𝐫𝐞𝐜𝐞𝐢𝐯𝐞𝐝.\n\n"
             f"❌ 𝐃𝐎 𝐍𝐎𝐓 𝐅𝐀𝐊𝐄 𝐕𝐄𝐑𝐈𝐅𝐘!",
             parse_mode="Markdown"
         )
 
-# ============ OTHER COMMANDS (Release, SendUPI, Complete) ============
+# ============ OTHER COMMANDS ============
 async def release_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -705,7 +709,7 @@ def main():
     application.add_handler(CommandHandler("complete", complete_deal))
     application.add_handler(CommandHandler("addadmin", add_admin))
     
-    # Message handlers (SMS handler pehle aayega)
+    # Message handlers
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, sms_handler))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
