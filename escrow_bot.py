@@ -149,6 +149,9 @@ async def sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tx_id = extract_tx_id_from_sms(text)
     amount = extract_amount_from_sms(text)
     
+    if not tx_id or not amount:
+        return
+    
     # Store the transaction
     sms_transactions[tx_id] = {
         "tx_id": tx_id,
@@ -212,13 +215,12 @@ async def sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 break
     
-    # If no deal auto-verified, just confirm storage
     if not auto_verified:
         # Check if amount matches any pending deal (maybe amount slightly off)
         partial_match = False
         for deal_id, deal in deals.items():
             if deal["status"] == "𝐀𝐖𝐀𝐈𝐓𝐈𝐍𝐆 𝐏𝐀𝐘𝐌𝐄𝐍𝐓" and not deal.get("payment_received"):
-                if abs(amount - deal["amount"]) < 100:  # Close but not exact
+                if abs(amount - deal["amount"]) < 100:
                     partial_match = True
                     await context.bot.send_message(
                         chat_id=OWNER_ID,
@@ -240,7 +242,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     user = update.effective_user
     username = user.username.lower() if user.username else ""
-    text_lower = message_text.lower()
+    text_lower = message_text.lower().strip()
     user_id = user.id
     
     # Register user if new
@@ -324,20 +326,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # ============ AGREE DETECTION ============
+    # ============ AGREE DETECTION - FIXED FOR ALL USERS ============
     agree_words = ['agree', 'agre', 'argee', 'agr']
     clean_text = text_lower.strip()
     
+    # Check if message is exactly an agree word
     is_agree = clean_text in agree_words or clean_text in ['yes', 'done', 'ok', 'y']
     
     if is_agree:
         agreed_to_deal = False
         
+        # Loop through ALL pending deals
         for deal_id, deal in deals.items():
             if deal["status"] != "𝐏𝐄𝐍𝐃𝐈𝐍𝐆":
                 continue
             
-            if deal["buyer"].lower() == username:
+            buyer_username = deal["buyer"].lower()
+            seller_username = deal["seller"].lower()
+            
+            # Check if this user is the BUYER
+            if username == buyer_username:
+                if deal["buyer_agreed"]:
+                    await update.message.reply_text(f"✅ @{user.username}, you already agreed as BUYER for `{deal_id}`!", parse_mode="Markdown")
+                    return
+                
                 deal["buyer_agreed"] = True
                 deal["buyer_id"] = user.id
                 save_deals(deals)
@@ -349,9 +361,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 if deal["seller_agreed"]:
                     await process_both_agreed(context, deal_id, deal)
+                else:
+                    # Tell them to wait for seller
+                    await update.message.reply_text(f"⏳ Waiting for @{deal['seller']} to agree...", parse_mode="Markdown")
                 return
             
-            elif deal["seller"].lower() == username:
+            # Check if this user is the SELLER
+            elif username == seller_username:
+                if deal["seller_agreed"]:
+                    await update.message.reply_text(f"✅ @{user.username}, you already agreed as SELLER for `{deal_id}`!", parse_mode="Markdown")
+                    return
+                
                 deal["seller_agreed"] = True
                 deal["seller_id"] = user.id
                 save_deals(deals)
@@ -363,10 +383,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 if deal["buyer_agreed"]:
                     await process_both_agreed(context, deal_id, deal)
+                else:
+                    await update.message.reply_text(f"⏳ Waiting for @{deal['buyer']} to agree...", parse_mode="Markdown")
                 return
         
         if not agreed_to_deal:
-            await update.message.reply_text("❌ No pending deal found for you. Create a deal first!")
+            await update.message.reply_text(
+                "❌ No pending deal found for you.\n\n"
+                "Make sure:\n"
+                "1️⃣ A deal was created with your username\n"
+                "2️⃣ You're typing in the same group where the deal was created\n"
+                "3️⃣ Your Telegram username (@username) matches the deal",
+                parse_mode="Markdown"
+            )
         return
 
 async def process_both_agreed(context, deal_id, deal):
@@ -386,7 +415,7 @@ async def process_both_agreed(context, deal_id, deal):
     
     await context.bot.send_message(
         chat_id=deal["chat_id"],
-        text=f"✅ 𝐁𝐎𝐓𝐇 𝐀𝐆𝐑𝐄𝐄𝐃!\n\n📋 `{deal_id}`\n💰 ₹{deal['amount']:.2f}\n\n👤 @{deal['buyer']} ← → @{deal['seller']}\n💳 QR sent to buyer.\n\n📌 Payment SMS will be auto-verified when received!",
+        text=f"✅ 𝐁𝐎𝐓𝐇 𝐀𝐆𝐑𝐄𝐄𝐃!\n\n📋 `{deal_id}`\n💰 ₹{deal['amount']:.2f}\n\n👤 @{deal['buyer']} ← → @{deal['seller']}\n💳 QR sent to buyer.\n\n📌 Payment SMS will be auto-verified when received!\n📱 @{deal['buyer']} - Please make the payment using the QR code.",
         parse_mode="Markdown"
     )
 
@@ -470,7 +499,6 @@ async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown"
             )
         else:
-            # Amount mismatch
             await update.message.reply_text(
                 f"❌ 𝐀𝐦𝐨𝐮𝐧𝐭 𝐦𝐢𝐬𝐦𝐚𝐭𝐜𝐡!\n\n"
                 f"Expected: ₹{deal['amount']:.2f}\n"
@@ -479,7 +507,6 @@ async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="Markdown"
             )
     else:
-        # TXN ID not found in stored SMS
         await update.message.reply_text(
             f"❌ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐍𝐎𝐓 𝐅𝐎𝐔𝐍𝐃 𝐈𝐍 𝐒𝐘𝐒𝐓𝐄𝐌! ❌\n\n"
             f"📋 `{deal_id}`\n💰 ₹{deal['amount']:.2f}\n\n"
@@ -493,9 +520,11 @@ async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-# ============ OTHER COMMANDS ============
+# ============ RELEASE COMMAND - Buyer releases payment ============
 async def release_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Buyer releases payment after receiving item"""
     user_id = update.effective_user.id
+    username = update.effective_user.username.lower() if update.effective_user.username else ""
     
     if len(context.args) < 1:
         await update.message.reply_text("📝 `/release DEAL_ID`", parse_mode="Markdown")
@@ -508,8 +537,12 @@ async def release_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Deal `{deal_id}` not found!", parse_mode="Markdown")
         return
     
-    if user_id != deal.get("buyer_id"):
-        await update.message.reply_text("❌ Only the buyer can release payment!", parse_mode="Markdown")
+    # Check if user is buyer or owner/admin
+    is_buyer = user_id == deal.get("buyer_id")
+    is_admin_user = is_admin(user_id)
+    
+    if not is_buyer and not is_admin_user:
+        await update.message.reply_text("❌ Only the buyer or admin can release payment!", parse_mode="Markdown")
         return
     
     if deal["status"] != "𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐂𝐎𝐍𝐅𝐈𝐑𝐌𝐄𝐃":
@@ -537,7 +570,9 @@ async def release_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
+# ============ SEND UPI COMMAND - Seller sends UPI ============
 async def send_upi(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Seller sends their UPI for payment release"""
     user_id = update.effective_user.id
     
     if len(context.args) < 2:
@@ -557,8 +592,12 @@ async def send_upi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Deal `{deal_id}` not found!", parse_mode="Markdown")
         return
     
-    if user_id != deal.get("seller_id"):
-        await update.message.reply_text(f"❌ Only @{deal['seller']} can send UPI!", parse_mode="Markdown")
+    # Check if user is seller or admin
+    is_seller = user_id == deal.get("seller_id")
+    is_admin_user = is_admin(user_id)
+    
+    if not is_seller and not is_admin_user:
+        await update.message.reply_text(f"❌ Only @{deal['seller']} or admin can send UPI!", parse_mode="Markdown")
         return
     
     if not deal.get("release_requested"):
@@ -583,7 +622,9 @@ async def send_upi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+# ============ COMPLETE DEAL - Owner only ============
 async def complete_deal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner marks deal as complete and sends payment to seller"""
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Owner only!")
         return
@@ -888,7 +929,7 @@ def main():
     application.add_handler(CommandHandler("complete", complete_deal))
     application.add_handler(CommandHandler("addadmin", add_admin))
     
-    # Message handlers - IMPORTANT: sms_handler will check if it looks like payment SMS
+    # Message handlers
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, sms_handler))
     
@@ -899,7 +940,7 @@ def main():
     print(f"👥 Users loaded: {len(users)}")
     print("=" * 60)
     print("📱 SMS Auto-Verify: ACTIVE")
-    print("✅ Payment SMS will be auto-detected!")
+    print("✅ All users can use commands!")
     print("=" * 60)
     
     application.run_polling()
