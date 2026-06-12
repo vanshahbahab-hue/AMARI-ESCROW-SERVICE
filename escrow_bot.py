@@ -11,7 +11,7 @@ from flask import Flask
 from telegram import Update, InputFile
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# ============ FLASK FOR RENDER ============
+# ============ FLASK ============
 flask_app = Flask(__name__)
 
 @flask_app.route('/')
@@ -30,7 +30,6 @@ ADMIN_IDS = [OWNER_ID]
 
 DEALS_FILE = "deals.json"
 USERS_FILE = "users.json"
-VERIFIED_TX_FILE = "verified_tx.json"
 
 # ============ FANCY TEXT ============
 def to_fancy(text):
@@ -63,19 +62,11 @@ def save_users(data):
     with open(USERS_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
-def load_verified_tx():
-    if os.path.exists(VERIFIED_TX_FILE):
-        with open(VERIFIED_TX_FILE, 'r') as f:
-            return json.load(f)
-    return {}
-
-def save_verified_tx(data):
-    with open(VERIFIED_TX_FILE, 'w') as f:
-        json.dump(data, f, indent=2)
-
 deals = load_deals()
 users = load_users()
-verified_tx = load_verified_tx()
+
+# In-memory store for received SMS transactions
+sms_transactions = {}
 
 # ============ HELPERS ============
 def generate_deal_id():
@@ -131,9 +122,9 @@ def is_banned(user_id):
     user = users.get(str(user_id), {})
     return user.get('banned', False)
 
-# ============ AUTO SMS HANDLER (Jo bhi SMS aayega, store karega) ============
+# ============ SMS HANDLER (Stores transaction first) ============
 async def sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """SMS aate hi automatically store ho jayega"""
+    """SMS aate hi store ho jayega - Ye hai sabse important part"""
     text = update.message.text
     tx_id = extract_tx_id_from_sms(text)
     amount = extract_amount_from_sms(text)
@@ -142,18 +133,17 @@ async def sms_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Could not extract TXN ID or Amount from SMS.")
         return
     
-    # Store in verified transactions
-    verified_tx[tx_id] = {
+    # Store in memory
+    sms_transactions[tx_id] = {
         "tx_id": tx_id,
         "amount": amount,
         "raw_sms": text[:300],
         "timestamp": str(datetime.now())
     }
-    save_verified_tx(verified_tx)
     
-    await update.message.reply_text(f"✅ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐒𝐌𝐒 𝐑𝐄𝐂𝐎𝐑𝐃𝐄𝐃!\n🔖 𝐓𝐗𝐍: `{tx_id}`\n💰 ₹{amount}", parse_mode="Markdown")
+    await update.message.reply_text(f"✅ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐒𝐌𝐒 𝐑𝐄𝐂𝐎𝐑𝐃𝐄𝐃!\n🔖 𝐓𝐗𝐍: `{tx_id}`\n💰 ₹{amount}\n\n📌 𝐍𝐨𝐰 𝐲𝐨𝐮 𝐜𝐚𝐧 𝐯𝐞𝐫𝐢𝐟𝐲.", parse_mode="Markdown")
     
-    # Auto-verify any pending deal with this amount
+    # Auto-verify any pending deal waiting for this amount
     for deal_id, deal in deals.items():
         if deal["status"] == "𝐀𝐖𝐀𝐈𝐓𝐈𝐍𝐆 𝐏𝐀𝐘𝐌𝐄𝐍𝐓" and not deal.get("payment_received"):
             if abs(amount - deal["amount"]) < 0.01:
@@ -195,7 +185,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text_lower = message_text.lower()
     user_id = user.id
     
-    # Register user if new
+    # Register user
     is_new = register_user(user_id, user.username or "NoUsername", user.first_name)
     if is_new and user_id != OWNER_ID:
         await context.bot.send_message(
@@ -255,8 +245,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ✅ @{buyer} - 𝐓𝐲𝐩𝐞 `𝐀𝐆𝐑𝐄𝐄`
 ✅ @{seller} - 𝐓𝐲𝐩𝐞 `𝐀𝐆𝐑𝐄𝐄`
-
-🕐 𝟏𝟎 𝐦𝐢𝐧𝐮𝐭𝐞𝐬!
 """, parse_mode="Markdown")
         
         await context.bot.send_message(chat_id=OWNER_ID, text=f"🆕 𝐍𝐄𝐖 𝐃𝐄𝐀𝐋!\n📋 {deal_id}\n💰 ₹{amount}\n@{buyer} → @{seller}")
@@ -303,7 +291,7 @@ async def process_both_agreed(context, deal_id, deal):
         await context.bot.send_photo(
             chat_id=deal["buyer_id"],
             photo=photo,
-            caption=f"🔷 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐐𝐑 🔷\n\n📋 `{deal_id}`\n💰 ₹{deal['amount']}\n\n📝 𝐀𝐟𝐭𝐞𝐫 𝐩𝐚𝐲𝐦𝐞𝐧𝐭:\n`/verify {deal_id} 𝐘𝐎𝐔𝐑_𝐓𝐗𝐍_𝐈𝐃`\n\n❌ 𝐃𝐎𝐍'𝐓 𝐏𝐀𝐘 𝐈𝐍 𝐃𝐌𝐒",
+            caption=f"🔷 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐐𝐑 🔷\n\n📋 `{deal_id}`\n💰 ₹{deal['amount']}\n\n📝 `/verify {deal_id} 𝐘𝐎𝐔𝐑_𝐓𝐗𝐍_𝐈𝐃`\n\n❌ 𝐃𝐎𝐍'𝐓 𝐏𝐀𝐘 𝐈𝐍 𝐃𝐌𝐒",
             parse_mode="Markdown"
         )
     
@@ -313,14 +301,13 @@ async def process_both_agreed(context, deal_id, deal):
         parse_mode="Markdown"
     )
 
-# ============ VERIFY COMMAND ============
+# ============ VERIFY COMMAND (Checks SMS transactions) ============
 async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Buyer: /verify DEAL_ID TRANSACTION_ID"""
     user_id = update.effective_user.id
     
     if len(context.args) < 2:
         await update.message.reply_text(
-            "📝 `/verify 𝐃𝐄𝐀𝐋_𝐈𝐃 𝐓𝐑𝐀𝐍𝐒𝐀𝐂𝐓𝐈𝐎𝐍_𝐈𝐃`\n\n𝐄𝐱𝐚𝐦𝐩𝐥𝐞: `/verify K2P9EJY0 652832203385`",
+            "📝 `/verify 𝐃𝐄𝐀𝐋_𝐈𝐃 𝐓𝐑𝐀𝐍𝐒𝐀𝐂𝐓𝐈𝐎𝐍_𝐈𝐃`\n\n𝐄𝐱𝐚𝐦𝐩𝐥𝐞: `/verify ONP9G2US 616397012871`",
             parse_mode="Markdown"
         )
         return
@@ -339,16 +326,16 @@ async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if deal["status"] != "𝐀𝐖𝐀𝐈𝐓𝐈𝐍𝐆 𝐏𝐀𝐘𝐌𝐄𝐍𝐓":
-        await update.message.reply_text(f"❌ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐧𝐨𝐭 𝐚𝐰𝐚𝐢𝐭𝐢𝐧𝐠 𝐩𝐚𝐲𝐦𝐞𝐧𝐭!", parse_mode="Markdown")
+        await update.message.reply_text(f"❌ 𝐃𝐞𝐚𝐥 `{deal_id}` 𝐧𝐨𝐭 𝐚𝐰𝐚𝐢𝐭𝐢𝐧𝐠!", parse_mode="Markdown")
         return
     
     if deal.get("payment_received"):
         await update.message.reply_text(f"✅ 𝐏𝐚𝐲𝐦𝐞𝐧𝐭 𝐚𝐥𝐫𝐞𝐚𝐝𝐲 𝐯𝐞𝐫𝐢𝐟𝐢𝐞𝐝!", parse_mode="Markdown")
         return
     
-    # Check if transaction exists in verified_tx
-    if tx_id in verified_tx:
-        txn_data = verified_tx[tx_id]
+    # ============ MAIN FIX: Check if SMS transaction exists ============
+    if tx_id in sms_transactions:
+        txn_data = sms_transactions[tx_id]
         amount = txn_data.get('amount')
         
         if amount and abs(amount - deal["amount"]) < 0.01:
@@ -388,16 +375,16 @@ async def verify_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
     else:
         await update.message.reply_text(
-            f"❌ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐍𝐎𝐓 𝐑𝐄𝐂𝐄𝐈𝐕𝐄𝐃 𝐘𝐄𝐓! ❌\n\n"
+            f"❌ 𝐏𝐀𝐘𝐌𝐄𝐍𝐓 𝐍𝐎𝐓 𝐑𝐄𝐂𝐄𝐈𝐕𝐄𝐃! ❌\n\n"
             f"📋 `{deal_id}`\n💰 ₹{deal['amount']}\n\n"
-            f"⚠️ 𝐓𝐗𝐍 `{tx_id}` 𝐧𝐨𝐭 𝐟𝐨𝐮𝐧𝐝.\n\n"
+            f"⚠️ 𝐓𝐗𝐍 `{tx_id}` 𝐧𝐨𝐭 𝐟𝐨𝐮𝐧𝐝 𝐢𝐧 𝐨𝐮𝐫 𝐫𝐞𝐜𝐨𝐫𝐝𝐬.\n\n"
             f"📱 𝐏𝐥𝐞𝐚𝐬𝐞 𝐦𝐚𝐤𝐞 𝐩𝐚𝐲𝐦𝐞𝐧𝐭 𝐟𝐢𝐫𝐬𝐭.\n"
-            f"🔖 𝐒𝐌𝐒 𝐰𝐢𝐥𝐥 𝐛𝐞 𝐚𝐮𝐭𝐨-𝐝𝐞𝐭𝐞𝐜𝐭𝐞𝐝.\n\n"
+            f"🔖 𝐒𝐌𝐒 𝐰𝐢𝐥𝐥 𝐛𝐞 𝐚𝐮𝐭𝐨-𝐝𝐞𝐭𝐞𝐜𝐭𝐞𝐝 𝐰𝐡𝐞𝐧 𝐲𝐨𝐮 𝐩𝐚𝐲.\n\n"
             f"❌ 𝐃𝐎 𝐍𝐎𝐓 𝐅𝐀𝐊𝐄 𝐕𝐄𝐑𝐈𝐅𝐘!",
             parse_mode="Markdown"
         )
 
-# ============ RELEASE, SENDUPI, COMPETE ============
+# ============ OTHER COMMANDS (Release, SendUPI, Complete) ============
 async def release_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
@@ -461,7 +448,7 @@ async def send_upi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if not deal.get("release_requested"):
-        await update.message.reply_text("❌ 𝐍𝐨 𝐫𝐞𝐥𝐞𝐚𝐬𝐞 𝐫𝐞𝐪𝐮𝐞𝐬𝐭!", parse_mode="Markdown")
+        await update.message.reply_text("❌ 𝐍𝐨 𝐫𝐞𝐥𝐞𝐚𝐬𝐞!", parse_mode="Markdown")
         return
     
     if deal.get("seller_upi"):
@@ -541,7 +528,7 @@ async def owner_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📋 𝐀𝐜𝐭𝐢𝐯𝐞: {active_deals}\n"
         f"✅ 𝐂𝐨𝐦𝐩𝐥𝐞𝐭𝐞𝐝: {completed_deals}\n"
         f"💰 𝐕𝐨𝐥𝐮𝐦𝐞: ₹{total_volume}\n\n"
-        f"📋 `/users`\n📋 `/deals`\n🚫 `/ban 𝐈𝐃`\n✅ `/unban 𝐈𝐃`\n💰 `/complete 𝐈𝐃`\n➕ `/addadmin 𝐈𝐃`",
+        f"📋 `/users`\n📋 `/deals`\n🚫 `/ban`\n✅ `/unban`\n💰 `/complete`",
         parse_mode="Markdown"
     )
 
@@ -718,15 +705,13 @@ def main():
     application.add_handler(CommandHandler("complete", complete_deal))
     application.add_handler(CommandHandler("addadmin", add_admin))
     
-    # Message handlers
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # Message handlers (SMS handler pehle aayega)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, sms_handler))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     print("=" * 50)
-    print("🔷 ESCROW BOT STARTED")
+    print("🔷 ESCROW BOT STARTED - SMS FIRST THEN VERIFY")
     print(f"👑 Owner: {OWNER_ID}")
-    print("✅ SMS auto-records transactions")
-    print("✅ /verify checks recorded transactions")
     print("=" * 50)
     
     application.run_polling()
